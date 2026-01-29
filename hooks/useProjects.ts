@@ -117,8 +117,6 @@ export function useProjects() {
             }));
 
             await supabase.from('notifications').insert(notifications);
-
-            await supabase.from('notifications').insert(notifications);
           }
         } catch (e) {
           console.error('Error sending notifications:', e);
@@ -130,6 +128,9 @@ export function useProjects() {
   };
 
   const updateProject = async (id: string, updates: Partial<Project>) => {
+    if (!user) return { error: new Error('Not authenticated') };
+    if (!isManager) return { error: new Error('Only Managers and Admins can update projects') };
+
     // Optimistic update - immediately update UI
     const previousProjects = projects;
     setProjects(prev => prev.map(p =>
@@ -173,8 +174,6 @@ export function useProjects() {
             }));
 
             await supabase.from('notifications').insert(notifications);
-
-            await supabase.from('notifications').insert(notifications);
           }
         } catch (e) {
           console.error('Error sending notifications:', e);
@@ -186,6 +185,9 @@ export function useProjects() {
   };
 
   const deleteProject = async (id: string) => {
+    if (!user) return { error: new Error('Not authenticated') };
+    if (!isManager) return { error: new Error('Only Managers and Admins can delete projects') };
+
     const { error } = await supabase
       .from('projects')
       .delete()

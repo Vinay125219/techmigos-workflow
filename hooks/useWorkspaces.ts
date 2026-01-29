@@ -101,17 +101,28 @@ export function useWorkspaces() {
       .select()
       .single();
 
-    if (!error && data) {
-      // Add creator as owner member
-      await supabase.from('workspace_members').insert({
-        workspace_id: data.id,
-        user_id: user.id,
-        role: 'owner',
-      });
-      fetchWorkspaces();
-    }
+    if (error) return { data: null, error };
 
-    return { data, error };
+    try {
+      // Add creator as owner member
+      const { error: memberError } = await supabase
+        .from('workspace_members')
+        .insert({
+          workspace_id: data.id,
+          user_id: user.id,
+          role: 'owner',
+        });
+
+      if (memberError) throw memberError;
+
+      fetchWorkspaces();
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('Error adding workspace owner:', err);
+      // Rollback workspace creation if member addition fails
+      await supabase.from('workspaces').delete().eq('id', data.id);
+      return { data: null, error: err };
+    }
   };
 
   const updateWorkspace = async (id: string, updates: Partial<Workspace>) => {

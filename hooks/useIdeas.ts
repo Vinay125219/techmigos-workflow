@@ -102,8 +102,6 @@ export function useIdeas() {
             }));
 
             await supabase.from('notifications').insert(notifications);
-
-            await supabase.from('notifications').insert(notifications);
           }
         } catch (e) {
           console.error('Error sending notifications:', e);
