@@ -5,9 +5,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import { useDeadlineReminders } from "@/hooks/useDeadlineReminders";
 import { EmailVerificationHandler } from "@/components/auth/EmailVerificationHandler";
-import { useState } from "react";
+import React, { useState } from "react";
 
 function AppContent({ children }: { children: React.ReactNode }) {
     // Initialize deadline reminders
@@ -34,9 +35,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <QueryClientProvider client={queryClient}>
             <TooltipProvider>
                 <AuthProvider>
-                    <Toaster />
-                    <Sonner />
-                    <AppContent>{children}</AppContent>
+                    <WorkspaceProvider>
+                        <Toaster />
+                        <Sonner />
+                        <AppContent>{children}</AppContent>
+                    </WorkspaceProvider>
                 </AuthProvider>
             </TooltipProvider>
         </QueryClientProvider>

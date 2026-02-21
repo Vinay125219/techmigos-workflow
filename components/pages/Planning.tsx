@@ -13,13 +13,16 @@ import { Progress } from '@/components/ui/progress';
 import { useProjects } from '@/hooks/useProjects';
 import { useTasks } from '@/hooks/useTasks';
 import { useIdeas } from '@/hooks/useIdeas';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
+import { DependencyPlanningPanel } from '@/components/planning/DependencyPlanningPanel';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, addDays } from 'date-fns';
 
 const Planning = () => {
   const router = useRouter();
-  const { projects } = useProjects();
-  const { tasks } = useTasks();
+  const { activeWorkspaceId } = useWorkspaceContext();
+  const { projects } = useProjects({ workspaceId: activeWorkspaceId });
+  const { tasks } = useTasks({ workspaceId: activeWorkspaceId });
   const { ideas } = useIdeas();
 
   // Project Roadmap - group by status
@@ -101,6 +104,15 @@ const Planning = () => {
           </div>
         </div>
 
+        <Card className="mb-6 border-dashed">
+          <CardContent className="pt-5 text-sm text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">How to use Planning</p>
+            <p>1. Keep project start/end dates and task dependencies updated.</p>
+            <p>2. Use Dependency Planning to identify blockers and critical-path tasks.</p>
+            <p>3. Move approved ideas into planned projects to keep roadmap realistic.</p>
+          </CardContent>
+        </Card>
+
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card className="card-hover cursor-pointer" onClick={() => router.push('/projects?status=active')}>
@@ -156,6 +168,8 @@ const Planning = () => {
             </CardContent>
           </Card>
         </div>
+
+        <DependencyPlanningPanel workspaceId={activeWorkspaceId} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Upcoming Milestones */}

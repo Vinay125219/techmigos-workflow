@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
 import type { Discussion, Profile } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -17,7 +17,7 @@ export function useDiscussions(entityType: string, entityId: string) {
 
         try {
             setLoading(true);
-            const { data, error } = await supabase
+            const { data, error } = await backend
                 .from('discussions')
                 .select('*')
                 .eq('entity_type', entityType)
@@ -26,20 +26,22 @@ export function useDiscussions(entityType: string, entityId: string) {
 
             if (error) throw error;
 
+            const discussionsData = (data || []) as Discussion[];
+
             // Fetch user profiles
-            const userIds = [...new Set((data || []).map(d => d.user_id))];
+            const userIds = [...new Set(discussionsData.map((discussion) => discussion.user_id))];
             const { data: profiles } = userIds.length > 0
-                ? await supabase.from('profiles').select('*').in('id', userIds)
+                ? await backend.from('profiles').select('*').in('id', userIds)
                 : { data: [] };
 
             const profileMap: Record<string, Profile> = {};
-            (profiles || []).forEach(p => {
-                profileMap[p.id] = p as Profile;
+            ((profiles || []) as Profile[]).forEach((profile) => {
+                profileMap[profile.id] = profile;
             });
 
-            const discussionsWithUsers = (data || []).map(d => ({
-                ...d,
-                user: profileMap[d.user_id],
+            const discussionsWithUsers = discussionsData.map((discussion) => ({
+                ...discussion,
+                user: profileMap[discussion.user_id],
             })) as DiscussionWithUser[];
 
             setDiscussions(discussionsWithUsers);
@@ -54,7 +56,7 @@ export function useDiscussions(entityType: string, entityId: string) {
         fetchDiscussions();
 
         if (entityId) {
-            const channel = supabase
+            const channel = backend
                 .channel(`discussions-${entityType}-${entityId}`)
                 .on('postgres_changes', {
                     event: '*',
@@ -67,7 +69,7 @@ export function useDiscussions(entityType: string, entityId: string) {
                 .subscribe();
 
             return () => {
-                supabase.removeChannel(channel);
+                backend.removeChannel(channel);
             };
         }
     }, [fetchDiscussions, entityType, entityId]);
@@ -75,7 +77,7 @@ export function useDiscussions(entityType: string, entityId: string) {
     const addDiscussion = async (content: string) => {
         if (!user) return { error: new Error('Not authenticated') };
 
-        const { data, error } = await supabase
+        const { data, error } = await backend
             .from('discussions')
             .insert({
                 entity_type: entityType,
@@ -96,7 +98,7 @@ export function useDiscussions(entityType: string, entityId: string) {
     };
 
     const deleteDiscussion = async (id: string) => {
-        const { error } = await supabase
+        const { error } = await backend
             .from('discussions')
             .delete()
             .eq('id', id);

@@ -67,4 +67,4 @@ create table public.tasks (
 );
 ```
 
-*(Note: You can generate the full schema using `supabase db dump` if you have the CLI)*.
+*(Schema and collection setup are now managed through Appwrite setup scripts and `APPWRITE_SCHEMA_CHECKLIST.md`.)*

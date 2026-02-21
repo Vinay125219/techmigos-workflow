@@ -12,19 +12,23 @@ import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useProjects } from '@/hooks/useProjects';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
+import { useTaskApprovals } from '@/hooks/useTaskApprovals';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from '@/hooks/use-toast';
 
 const ManagerDashboard = () => {
     const router = useRouter();
+    const { activeWorkspaceId } = useWorkspaceContext();
     const { isManager, loading: authLoading } = useAuth();
-    const { tasks, approveTask, rejectTask } = useTasks();
-    const { projects } = useProjects();
-    const { members } = useTeamMembers();
+    const { tasks, approveTask, rejectTask } = useTasks({ workspaceId: activeWorkspaceId });
+    const { projects } = useProjects({ workspaceId: activeWorkspaceId });
+    const { members } = useTeamMembers({ workspaceId: activeWorkspaceId });
+    const { approvals } = useTaskApprovals();
 
     useEffect(() => {
         if (!authLoading && !isManager) router.push('/');
@@ -101,7 +105,7 @@ const ManagerDashboard = () => {
                 </div>
 
                 {/* Quick Stats */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
                     <Card className="card-hover cursor-pointer" onClick={() => router.push('/tasks?status=review')}>
                         <CardContent className="p-4">
                             <div className="flex items-center gap-3">
@@ -150,6 +154,19 @@ const ManagerDashboard = () => {
                                 <div>
                                     <p className="text-2xl font-bold">{projectStats.active}</p>
                                     <p className="text-xs text-muted-foreground">Active Projects</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="card-hover cursor-pointer" onClick={() => router.push('/tasks?status=review')}>
+                        <CardContent className="p-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-rose-500/20">
+                                    <AlertTriangle className="w-5 h-5 text-rose-500" />
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold">{approvals.filter(a => a.status === 'escalated').length}</p>
+                                    <p className="text-xs text-muted-foreground">SLA Escalated</p>
                                 </div>
                             </div>
                         </CardContent>

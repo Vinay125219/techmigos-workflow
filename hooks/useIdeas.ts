@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { Idea, Profile } from '@/types/database';
+import { backend } from '@/integrations/backend/client';
+import type { Idea, IdeaVote, Profile } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
 
 
@@ -13,38 +13,45 @@ export function useIdeas() {
   const fetchIdeas = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await backend
         .from('ideas')
         .select('*')
         .order('votes', { ascending: false });
 
       if (error) throw error;
+      const ideasData = (data || []) as Idea[];
 
       // Fetch creator profiles
-      const creatorIds: string[] = [...new Set((data || []).filter(i => i.created_by).map(i => i.created_by as string))];
+      const creatorIds: string[] = [
+        ...new Set(
+          ideasData
+            .filter((idea) => idea.created_by)
+            .map((idea) => idea.created_by as string)
+        ),
+      ];
       const { data: profiles } = creatorIds.length > 0
-        ? await supabase.from('profiles').select('*').in('id', creatorIds)
+        ? await backend.from('profiles').select('*').in('id', creatorIds)
         : { data: [] };
 
       const profileMap: Record<string, Profile> = {};
-      (profiles || []).forEach(p => {
-        profileMap[p.id] = p as Profile;
+      ((profiles || []) as Profile[]).forEach((profile) => {
+        profileMap[profile.id] = profile;
       });
 
       // Fetch user's votes if authenticated
       const voteMap: Record<string, 'up' | 'down'> = {};
       if (user) {
-        const { data: votes } = await supabase
+        const { data: votes } = await backend
           .from('idea_votes')
           .select('idea_id, vote_type')
           .eq('user_id', user.id);
 
-        (votes || []).forEach(v => {
-          voteMap[v.idea_id] = v.vote_type as 'up' | 'down';
+        ((votes || []) as Pick<IdeaVote, 'idea_id' | 'vote_type'>[]).forEach((vote) => {
+          voteMap[vote.idea_id] = vote.vote_type;
         });
       }
 
-      const ideasWithRelations = (data || []).map(idea => ({
+      const ideasWithRelations = ideasData.map((idea) => ({
         ...idea,
         creator: idea.created_by ? profileMap[idea.created_by] : undefined,
         user_vote: voteMap[idea.id] || null,
@@ -66,7 +73,7 @@ export function useIdeas() {
   const createIdea = async (idea: { title: string; description: string; category?: string }) => {
     if (!user) return { error: new Error('Not authenticated') };
 
-    const { data, error } = await supabase
+    const { data, error } = await backend
       .from('ideas')
       .insert({ ...idea, created_by: user.id })
       .select()
@@ -79,21 +86,22 @@ export function useIdeas() {
       // Fire-and-forget: Send notifications
       (async () => {
         try {
-          const { data: creatorProfile } = await supabase
+          const { data: creatorProfile } = await backend
             .from('profiles')
             .select('full_name')
             .eq('id', user.id)
             .single();
 
           // Notify all users about new idea (except creator)
-          const { data: allProfiles } = await supabase
+          const { data: allProfiles } = await backend
             .from('profiles')
             .select('id, email')
             .neq('id', user.id);
 
-          if (allProfiles && allProfiles.length > 0) {
-            const notifications = allProfiles.map(p => ({
-              user_id: p.id,
+          const profilesToNotify = (allProfiles || []) as Pick<Profile, 'id'>[];
+          if (profilesToNotify.length > 0) {
+            const notifications = profilesToNotify.map((profile) => ({
+              user_id: profile.id,
               type: 'new_idea',
               title: 'New Idea',
               message: `"${data.title}" was created by ${creatorProfile?.full_name || 'someone'}`,
@@ -101,7 +109,7 @@ export function useIdeas() {
               entity_id: data.id,
             }));
 
-            await supabase.from('notifications').insert(notifications);
+            await backend.from('notifications').insert(notifications);
           }
         } catch (e) {
           console.error('Error sending notifications:', e);
@@ -146,7 +154,7 @@ export function useIdeas() {
 
     if (existingVote === voteType) {
       // Remove vote
-      const result = await supabase
+      const result = await backend
         .from('idea_votes')
         .delete()
         .eq('idea_id', ideaId)
@@ -154,14 +162,14 @@ export function useIdeas() {
       error = result.error;
 
       if (!error) {
-        await supabase
+        await backend
           .from('ideas')
           .update({ votes: (existingIdea?.votes || 0) + voteChange })
           .eq('id', ideaId);
       }
     } else if (existingVote) {
       // Change vote
-      const result = await supabase
+      const result = await backend
         .from('idea_votes')
         .update({ vote_type: voteType })
         .eq('idea_id', ideaId)
@@ -169,20 +177,20 @@ export function useIdeas() {
       error = result.error;
 
       if (!error) {
-        await supabase
+        await backend
           .from('ideas')
           .update({ votes: (existingIdea?.votes || 0) + voteChange })
           .eq('id', ideaId);
       }
     } else {
       // New vote
-      const result = await supabase
+      const result = await backend
         .from('idea_votes')
         .insert({ idea_id: ideaId, user_id: user.id, vote_type: voteType });
       error = result.error;
 
       if (!error) {
-        await supabase
+        await backend
           .from('ideas')
           .update({ votes: (existingIdea?.votes || 0) + voteChange })
           .eq('id', ideaId);
@@ -207,7 +215,7 @@ export function useIdeas() {
       i.id === ideaId ? { ...i, status } : i
     ));
 
-    const { error } = await supabase
+    const { error } = await backend
       .from('ideas')
       .update({ status })
       .eq('id', ideaId);

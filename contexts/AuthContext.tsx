@@ -1,12 +1,12 @@
 "use client";
 import React, { createContext, useContext } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { useSupabaseAuth } from '@/hooks/useAuth';
+import { useBackendAuth } from '@/hooks/useAuth';
 import type { Profile, AppRole } from '@/types/database';
+import type { AuthUser, AuthSession } from '@/types/auth';
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
+  session: AuthSession | null;
   profile: Profile | null;
   roles: AppRole[];
   loading: boolean;
@@ -15,6 +15,7 @@ interface AuthContextType {
   isManager: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<any>;
   signIn: (email: string, password: string) => Promise<any>;
+  signInWithGoogle: () => Promise<any>;
   signOut: () => Promise<any>;
   updateProfile: (updates: Partial<Profile>) => Promise<any>;
   refetchUserData: () => void;
@@ -23,7 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const auth = useSupabaseAuth();
+  const auth = useBackendAuth();
 
   return (
     <AuthContext.Provider value={auth}>

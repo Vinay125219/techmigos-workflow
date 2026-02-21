@@ -1,8 +1,13 @@
 import { useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { addHours, isAfter, isBefore, parseISO, differenceInHours } from 'date-fns';
+import { addHours, differenceInHours, parseISO } from 'date-fns';
 
+type DeadlineTask = {
+  id: string;
+  title: string;
+  deadline: string | null;
+};
 
 export function useDeadlineReminders() {
   const { user } = useAuth();
@@ -12,7 +17,7 @@ export function useDeadlineReminders() {
 
     try {
       // Get tasks assigned to the user with deadlines
-      const { data: tasks, error } = await supabase
+      const { data, error } = await backend
         .from('tasks')
         .select('id, title, deadline, status')
         .eq('assigned_to', user.id)
@@ -21,19 +26,20 @@ export function useDeadlineReminders() {
 
       if (error) throw error;
 
+      const tasks = (data ?? []) as DeadlineTask[];
       const now = new Date();
       const in24Hours = addHours(now, 24);
 
-      for (const task of tasks || []) {
+      for (const task of tasks) {
         if (!task.deadline) continue;
 
         const deadline = parseISO(task.deadline);
         const hoursUntilDeadline = differenceInHours(deadline, now);
 
         // Check if deadline is within 24 hours and not already past
-        if (hoursUntilDeadline > 0 && hoursUntilDeadline <= 24) {
+        if (deadline <= in24Hours && hoursUntilDeadline > 0 && hoursUntilDeadline <= 24) {
           // Check if we already sent a reminder for this task today
-          const { data: existingNotif } = await supabase
+          const { data: existingNotif } = await backend
             .from('notifications')
             .select('id')
             .eq('user_id', user.id)
@@ -44,16 +50,7 @@ export function useDeadlineReminders() {
 
           if (!existingNotif) {
             // Send in-app notification
-            await supabase.from('notifications').insert({
-              user_id: user.id,
-              type: 'deadline_reminder',
-              title: 'Deadline Approaching',
-              message: `"${task.title}" is due in ${hoursUntilDeadline} hours`,
-              entity_type: 'task',
-              entity_id: task.id,
-            });
-
-            await supabase.from('notifications').insert({
+            await backend.from('notifications').insert({
               user_id: user.id,
               type: 'deadline_reminder',
               title: 'Deadline Approaching',

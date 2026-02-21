@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
 import type { UserOnboarding } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -67,15 +67,98 @@ export function useOnboarding() {
   const [isOnboardingActive, setIsOnboardingActive] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const getOrCreateOnboardingRecord = useCallback(async (): Promise<UserOnboarding | null> => {
+    if (!user) return null;
+
+    if (onboarding?.id && onboarding.user_id === user.id) {
+      return onboarding;
+    }
+
+    const { data: existing, error: fetchError } = await backend
+      .from('user_onboarding')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    if (existing) {
+      const record = existing as UserOnboarding;
+      setOnboarding(record);
+      return record;
+    }
+
+    const { data: created, error: createError } = await backend
+      .from('user_onboarding')
+      .insert({
+        id: user.id,
+        user_id: user.id,
+        completed: false,
+        steps_completed: [],
+      })
+      .select('*')
+      .single();
+
+    if (createError) {
+      // Handle races where another client created the row between fetch and insert.
+      const { data: fallback, error: fallbackError } = await backend
+        .from('user_onboarding')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (fallbackError) throw fallbackError;
+      if (!fallback) throw createError;
+
+      const record = fallback as UserOnboarding;
+      setOnboarding(record);
+      return record;
+    }
+
+    const record = created as UserOnboarding;
+    setOnboarding(record);
+    return record;
+  }, [onboarding, user]);
+
+  const persistOnboarding = useCallback(
+    async (updates: Partial<Pick<UserOnboarding, 'completed' | 'steps_completed'>>) => {
+      if (!user) return;
+
+      try {
+        const record = await getOrCreateOnboardingRecord();
+        if (!record) return;
+
+        const { data, error } = await backend
+          .from('user_onboarding')
+          .update(updates)
+          .eq('id', record.id)
+          .select('*')
+          .single();
+
+        if (error) throw error;
+        if (data) {
+          setOnboarding(data as UserOnboarding);
+        }
+      } catch (err) {
+        console.error('Error persisting onboarding:', err);
+      }
+    },
+    [getOrCreateOnboardingRecord, user]
+  );
+
   const fetchOnboarding = useCallback(async () => {
+    setLoading(true);
+
     if (!user) {
       setOnboarding(null);
+      setCurrentStep(0);
+      setIsOnboardingActive(false);
       setLoading(false);
       return;
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await backend
         .from('user_onboarding')
         .select('*')
         .eq('user_id', user.id)
@@ -88,9 +171,14 @@ export function useOnboarding() {
         if (!data.completed) {
           setCurrentStep(data.steps_completed?.length || 0);
           setIsOnboardingActive(true);
+        } else {
+          setCurrentStep(0);
+          setIsOnboardingActive(false);
         }
       } else {
         // First time user - show onboarding
+        setOnboarding(null);
+        setCurrentStep(0);
         setIsOnboardingActive(true);
       }
     } catch (err) {
@@ -111,13 +199,13 @@ export function useOnboarding() {
 
       if (user) {
         const stepsCompleted = ONBOARDING_STEPS.slice(0, newStep).map(s => s.id);
-        await supabase
-          .from('user_onboarding')
-          .update({ steps_completed: stepsCompleted })
-          .eq('user_id', user.id);
+        await persistOnboarding({
+          completed: false,
+          steps_completed: stepsCompleted,
+        });
       }
     } else {
-      completeOnboarding();
+      await completeOnboarding();
     }
   };
 
@@ -129,27 +217,17 @@ export function useOnboarding() {
 
   const skipOnboarding = async () => {
     setIsOnboardingActive(false);
-    
-    if (user) {
-      await supabase
-        .from('user_onboarding')
-        .update({ completed: true })
-        .eq('user_id', user.id);
-    }
+
+    await persistOnboarding({ completed: true });
   };
 
   const completeOnboarding = async () => {
     setIsOnboardingActive(false);
-    
-    if (user) {
-      await supabase
-        .from('user_onboarding')
-        .update({ 
-          completed: true,
-          steps_completed: ONBOARDING_STEPS.map(s => s.id),
-        })
-        .eq('user_id', user.id);
-    }
+
+    await persistOnboarding({
+      completed: true,
+      steps_completed: ONBOARDING_STEPS.map(s => s.id),
+    });
   };
 
   const restartOnboarding = () => {

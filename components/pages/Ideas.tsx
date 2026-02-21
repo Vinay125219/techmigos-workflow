@@ -164,6 +164,15 @@ const Ideas = () => {
           )}
         </div>
 
+        <Card className="mb-6 border-dashed">
+          <CardContent className="pt-5 text-sm text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">How to use Ideas effectively</p>
+            <p>1. Team members submit clear problem/solution ideas with measurable outcomes.</p>
+            <p>2. Everyone votes, Managers move items through review/approved/rejected.</p>
+            <p>3. Approved ideas should convert into Projects/Tasks for actual execution.</p>
+          </CardContent>
+        </Card>
+
         {/* Stats Bar */}
         <div className="flex flex-wrap gap-3 mb-6">
           <button

@@ -6,11 +6,13 @@ import { Providers } from "@/components/providers";
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
+  preload: false,
 });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
+  preload: false,
 });
 
 export const metadata: Metadata = {

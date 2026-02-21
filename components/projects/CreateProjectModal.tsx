@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, CalendarIcon } from 'lucide-react';
 import { useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -21,6 +22,7 @@ const STATUSES = ['planned', 'active', 'on-hold'] as const;
 export function CreateProjectModal() {
   const { createProject } = useProjects();
   const { isManager } = useAuth();
+  const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -66,7 +68,7 @@ export function CreateProjectModal() {
       start_date: startDate ? format(startDate, 'yyyy-MM-dd') : null,
       end_date: endDate ? format(endDate, 'yyyy-MM-dd') : null,
       progress: 0,
-      workspace_id: null,
+      workspace_id: activeWorkspaceId,
     });
 
     setLoading(false);
@@ -91,6 +93,11 @@ export function CreateProjectModal() {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Create New Project</DialogTitle>
+          {activeWorkspace && (
+            <p className="text-sm text-muted-foreground">
+              Workspace: <span className="font-medium">{activeWorkspace.name}</span>
+            </p>
+          )}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

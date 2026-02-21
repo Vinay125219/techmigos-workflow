@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface PresenceState {
@@ -16,35 +16,30 @@ export function usePresence(room: string) {
     useEffect(() => {
         if (!user || !room) return;
 
-        const channel = supabase.channel(room, {
-            config: {
-                presence: {
-                    key: user.id,
-                },
-            },
-        });
+        const channel = backend.channel(room);
 
         channel
             .on('presence', { event: 'sync' }, () => {
                 const newState = channel.presenceState<PresenceState>();
                 const users = Object.values(newState).flat();
                 // Dedup by user_id
-                const uniqueUsers = Array.from(new Map(users.map(u => [u.user_id, u])).values());
+                const uniqueUsers = Array.from(new Map(users.map((presenceUser) => [presenceUser.user_id, presenceUser])).values());
                 setOnlineUsers(uniqueUsers);
             })
             .subscribe(async (status) => {
                 if (status === 'SUBSCRIBED') {
-                    await channel.track({
+                    setOnlineUsers([{
                         user_id: user.id,
                         online_at: new Date().toISOString(),
-                        full_name: profile?.full_name,
-                        avatar_url: profile?.avatar_url,
-                    });
+                        full_name: profile?.full_name || undefined,
+                        avatar_url: profile?.avatar_url || undefined,
+                    }]);
+                    await channel.track();
                 }
             });
 
         return () => {
-            supabase.removeChannel(channel);
+            backend.removeChannel(channel);
         };
     }, [room, user, profile]);
 

@@ -1,13 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
 import type { Notification } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
 
-export function useNotifications() {
+interface UseNotificationsOptions {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  unreadOnly?: boolean;
+}
+
+export function useNotifications(options: UseNotificationsOptions = {}) {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const page = Math.max(1, options.page || 1);
+  const pageSize = Math.max(1, options.pageSize || 50);
+  const offset = (page - 1) * pageSize;
 
   const fetchNotifications = useCallback(async () => {
     if (!user) {
@@ -18,30 +30,49 @@ export function useNotifications() {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      let query = backend
         .from('notifications')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .order('created_at', { ascending: false });
+
+      if (options.unreadOnly) {
+        query = query.eq('read', false);
+      }
+      if (options.search && options.search.trim()) {
+        query = query.search('title', options.search.trim());
+      }
+
+      query = query.range(offset, offset + pageSize - 1);
+
+      const [{ data, error, count }, unreadResult] = await Promise.all([
+        query,
+        backend
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('read', false)
+          .limit(1),
+      ]);
 
       if (error) throw error;
 
       const notifs = (data || []) as Notification[];
+      setTotalCount(count || notifs.length);
       setNotifications(notifs);
-      setUnreadCount(notifs.filter(n => !n.read).length);
+      setUnreadCount(unreadResult.count || notifs.filter(n => !n.read).length);
     } catch (err) {
       console.error('Error fetching notifications:', err);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, options.unreadOnly, options.search, offset, pageSize]);
 
   useEffect(() => {
     fetchNotifications();
 
     if (user) {
-      const channel = supabase
+      const channel = backend
         .channel(`notifications-${user.id}`)
         .on('postgres_changes', { 
           event: '*', 
@@ -54,13 +85,13 @@ export function useNotifications() {
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        backend.removeChannel(channel);
       };
     }
   }, [fetchNotifications, user]);
 
   const markAsRead = async (notificationId: string) => {
-    const { error } = await supabase
+    const { error } = await backend
       .from('notifications')
       .update({ read: true })
       .eq('id', notificationId);
@@ -78,7 +109,7 @@ export function useNotifications() {
   const markAllAsRead = async () => {
     if (!user) return;
 
-    const { error } = await supabase
+    const { error } = await backend
       .from('notifications')
       .update({ read: true })
       .eq('user_id', user.id)
@@ -95,7 +126,7 @@ export function useNotifications() {
   const deleteNotification = async (notificationId: string) => {
     const notification = notifications.find(n => n.id === notificationId);
     
-    const { error } = await supabase
+    const { error } = await backend
       .from('notifications')
       .delete()
       .eq('id', notificationId);
@@ -114,6 +145,10 @@ export function useNotifications() {
     notifications,
     loading,
     unreadCount,
+    page,
+    pageSize,
+    totalCount,
+    hasMore: offset + notifications.length < totalCount,
     fetchNotifications,
     markAsRead,
     markAllAsRead,

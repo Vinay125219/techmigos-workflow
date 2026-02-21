@@ -10,13 +10,16 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 
 export function NotificationPanel() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, loading } = useNotifications();
+  const { preferences, isMuted, isSnoozed, mute, snooze, updatePreferences } = useNotificationPreferences();
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -164,6 +167,23 @@ export function NotificationPanel() {
             </Button>
           )}
         </div>
+        <div className="px-4 py-3 border-b bg-muted/20 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span>Digest email</span>
+            <Switch
+              checked={Boolean(preferences?.digest_enabled)}
+              onCheckedChange={(checked) => updatePreferences({ digest_enabled: checked })}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => mute(4)}>
+              {isMuted ? 'Muted' : 'Mute 4h'}
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => snooze(2)}>
+              {isSnoozed ? 'Snoozed' : 'Snooze 2h'}
+            </Button>
+          </div>
+        </div>
         <ScrollArea className="h-[350px]">
           {loading ? (
             <div className="p-8 text-center">
@@ -249,4 +269,3 @@ export function NotificationPanel() {
     </Popover>
   );
 }
-

@@ -11,17 +11,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ProjectCardSkeleton } from '@/components/ui/card-skeletons';
 import { useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { cn } from '@/lib/utils';
 
 const Projects = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { projects, loading } = useProjects();
+  const { activeWorkspaceId } = useWorkspaceContext();
   const { isAuthenticated, isManager } = useAuth();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  const { projects, loading, hasMore, totalCount } = useProjects({
+    workspaceId: activeWorkspaceId,
+    page,
+    pageSize,
+    search: searchQuery || undefined,
+    status: statusFilter === 'all' ? undefined : statusFilter,
+    category: categoryFilter === 'all' ? undefined : categoryFilter,
+  });
 
   // Handle highlight from notification click
   useEffect(() => {
@@ -45,20 +57,18 @@ const Projects = () => {
 
   const categories = [...new Set(projects.map(p => p.category).filter(Boolean))] as string[];
 
-  const filteredProjects = projects.filter(project => {
-    const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (project.description || '').toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || project.status === statusFilter;
-    const matchesCategory = categoryFilter === 'all' || project.category === categoryFilter;
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
+  const filteredProjects = projects;
 
   const stats = {
-    total: projects.length,
+    total: totalCount || projects.length,
     active: projects.filter(p => p.status === 'active').length,
     completed: projects.filter(p => p.status === 'completed').length,
     planned: projects.filter(p => p.status === 'planned').length,
   };
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter, categoryFilter, activeWorkspaceId]);
 
   return (
     <Layout>
@@ -110,11 +120,26 @@ const Projects = () => {
             ))}
           </div>
         ) : filteredProjects.length > 0 ? (
-          <div className={cn(viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-3")}>
-            {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} variant={viewMode} onViewTasks={(projectId) => router.push(`/tasks?project=${projectId}`)} />
-            ))}
-          </div>
+          <>
+            <div className={cn(viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-3")}>
+              {filteredProjects.map((project) => (
+                <ProjectCard key={project.id} project={project} variant={viewMode} onViewTasks={(projectId) => router.push(`/tasks?project=${projectId}`)} />
+              ))}
+            </div>
+            <div className="mt-6 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Page {page} · Showing {projects.length} of {totalCount || projects.length}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
+                  Previous
+                </Button>
+                <Button variant="outline" size="sm" disabled={!hasMore} onClick={() => setPage((prev) => prev + 1)}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="text-center py-16"><p className="text-muted-foreground">No projects found.</p></div>
         )}

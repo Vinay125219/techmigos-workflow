@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { Workspace, WorkspaceMember, Profile } from '@/types/database';
+import { backend } from '@/integrations/backend/client';
+import type { Workspace, WorkspaceMember, Profile, Project } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
 
 export function useWorkspaces() {
@@ -18,46 +18,64 @@ export function useWorkspaces() {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data: membershipRows, error: membershipError } = await backend
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', user.id);
+
+      if (membershipError) throw membershipError;
+      const workspaceIds = Array.from(
+        new Set(((membershipRows || []) as Array<{ workspace_id: string }>).map((member) => member.workspace_id))
+      );
+
+      if (workspaceIds.length === 0) {
+        setWorkspaces([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await backend
         .from('workspaces')
         .select('*')
+        .in('id', workspaceIds)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      const workspaceRows = (data || []) as Workspace[];
 
       // Fetch member counts and project counts
-      const workspaceIds = (data || []).map(w => w.id);
+      const fetchedWorkspaceIds = workspaceRows.map((workspace) => workspace.id);
 
-      if (workspaceIds.length > 0) {
+      if (fetchedWorkspaceIds.length > 0) {
         const [membersResult, projectsResult, ownersResult] = await Promise.all([
-          supabase.from('workspace_members').select('workspace_id').in('workspace_id', workspaceIds),
-          supabase.from('projects').select('workspace_id').in('workspace_id', workspaceIds),
-          supabase.from('profiles').select('*').in('id', data?.map(w => w.owner_id) || []),
+          backend.from('workspace_members').select('workspace_id').in('workspace_id', fetchedWorkspaceIds),
+          backend.from('projects').select('workspace_id').in('workspace_id', fetchedWorkspaceIds),
+          backend.from('profiles').select('*').in('id', workspaceRows.map((workspace) => workspace.owner_id)),
         ]);
 
         const memberCounts: Record<string, number> = {};
         const projectCounts: Record<string, number> = {};
         const ownerMap: Record<string, Profile> = {};
 
-        (membersResult.data || []).forEach(m => {
-          memberCounts[m.workspace_id] = (memberCounts[m.workspace_id] || 0) + 1;
+        ((membersResult.data || []) as Pick<WorkspaceMember, 'workspace_id'>[]).forEach((member) => {
+          memberCounts[member.workspace_id] = (memberCounts[member.workspace_id] || 0) + 1;
         });
 
-        (projectsResult.data || []).forEach(p => {
-          if (p.workspace_id) {
-            projectCounts[p.workspace_id] = (projectCounts[p.workspace_id] || 0) + 1;
+        ((projectsResult.data || []) as Pick<Project, 'workspace_id'>[]).forEach((project) => {
+          if (project.workspace_id) {
+            projectCounts[project.workspace_id] = (projectCounts[project.workspace_id] || 0) + 1;
           }
         });
 
-        (ownersResult.data || []).forEach(p => {
-          ownerMap[p.id] = p as Profile;
+        ((ownersResult.data || []) as Profile[]).forEach((ownerProfile) => {
+          ownerMap[ownerProfile.id] = ownerProfile;
         });
 
-        const workspacesWithCounts = (data || []).map(w => ({
-          ...w,
-          member_count: memberCounts[w.id] || 0,
-          project_count: projectCounts[w.id] || 0,
-          owner: ownerMap[w.owner_id],
+        const workspacesWithCounts = workspaceRows.map((workspace) => ({
+          ...workspace,
+          member_count: memberCounts[workspace.id] || 0,
+          project_count: projectCounts[workspace.id] || 0,
+          owner: ownerMap[workspace.owner_id],
         })) as Workspace[];
 
         setWorkspaces(workspacesWithCounts);
@@ -76,7 +94,7 @@ export function useWorkspaces() {
     fetchWorkspaces();
 
     if (user) {
-      const channel = supabase
+      const channel = backend
         .channel('workspaces-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'workspaces' }, () => {
           fetchWorkspaces();
@@ -87,7 +105,7 @@ export function useWorkspaces() {
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        backend.removeChannel(channel);
       };
     }
   }, [fetchWorkspaces, user]);
@@ -95,7 +113,7 @@ export function useWorkspaces() {
   const createWorkspace = async (workspace: { name: string; description?: string }) => {
     if (!user) return { error: new Error('Not authenticated') };
 
-    const { data, error } = await supabase
+    const { data, error } = await backend
       .from('workspaces')
       .insert({ ...workspace, owner_id: user.id })
       .select()
@@ -105,7 +123,7 @@ export function useWorkspaces() {
 
     try {
       // Add creator as owner member
-      const { error: memberError } = await supabase
+      const { error: memberError } = await backend
         .from('workspace_members')
         .insert({
           workspace_id: data.id,
@@ -120,13 +138,13 @@ export function useWorkspaces() {
     } catch (err: any) {
       console.error('Error adding workspace owner:', err);
       // Rollback workspace creation if member addition fails
-      await supabase.from('workspaces').delete().eq('id', data.id);
+      await backend.from('workspaces').delete().eq('id', data.id);
       return { data: null, error: err };
     }
   };
 
   const updateWorkspace = async (id: string, updates: Partial<Workspace>) => {
-    const { data, error } = await supabase
+    const { data, error } = await backend
       .from('workspaces')
       .update(updates)
       .eq('id', id)
@@ -138,7 +156,7 @@ export function useWorkspaces() {
   };
 
   const deleteWorkspace = async (id: string) => {
-    const { error } = await supabase
+    const { error } = await backend
       .from('workspaces')
       .delete()
       .eq('id', id);
@@ -172,28 +190,29 @@ export function useWorkspaceMembers(workspaceId?: string) {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await backend
         .from('workspace_members')
         .select('*')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+      const memberRows = (data || []) as WorkspaceMember[];
 
       // Fetch user profiles
-      const userIds = (data || []).map(m => m.user_id);
+      const userIds = memberRows.map((member) => member.user_id);
       const { data: profiles } = userIds.length > 0
-        ? await supabase.from('profiles').select('*').in('id', userIds)
+        ? await backend.from('profiles').select('*').in('id', userIds)
         : { data: [] };
 
       const profileMap: Record<string, Profile> = {};
-      (profiles || []).forEach(p => {
-        profileMap[p.id] = p as Profile;
+      ((profiles || []) as Profile[]).forEach((profile) => {
+        profileMap[profile.id] = profile;
       });
 
-      const membersWithProfiles = (data || []).map(m => ({
-        ...m,
-        user: profileMap[m.user_id],
+      const membersWithProfiles = memberRows.map((member) => ({
+        ...member,
+        user: profileMap[member.user_id],
       })) as WorkspaceMember[];
 
       setMembers(membersWithProfiles);
@@ -208,7 +227,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
     fetchMembers();
 
     if (workspaceId) {
-      const channel = supabase
+      const channel = backend
         .channel(`workspace-members-${workspaceId}`)
         .on('postgres_changes', {
           event: '*',
@@ -221,7 +240,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        backend.removeChannel(channel);
       };
     }
   }, [fetchMembers, workspaceId]);
@@ -230,7 +249,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
     if (!workspaceId) return { error: new Error('No workspace selected') };
 
     // Find user by email
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await backend
       .from('profiles')
       .select('id')
       .eq('email', email)
@@ -239,7 +258,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
     if (profileError) return { error: profileError };
     if (!profile) return { error: new Error('User not found with that email') };
 
-    const { data, error } = await supabase
+    const { data, error } = await backend
       .from('workspace_members')
       .insert({ workspace_id: workspaceId, user_id: profile.id, role })
       .select()
@@ -249,7 +268,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
       fetchMembers();
 
       // Notify the new member
-      await supabase.from('notifications').insert({
+      await backend.from('notifications').insert({
         user_id: profile.id,
         type: 'workspace_invite',
         title: 'Workspace Invitation',
@@ -263,7 +282,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
   };
 
   const updateMemberRole = async (memberId: string, role: 'admin' | 'member' | 'viewer') => {
-    const { data, error } = await supabase
+    const { data, error } = await backend
       .from('workspace_members')
       .update({ role })
       .eq('id', memberId)
@@ -275,7 +294,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
   };
 
   const removeMember = async (memberId: string) => {
-    const { error } = await supabase
+    const { error } = await backend
       .from('workspace_members')
       .delete()
       .eq('id', memberId);

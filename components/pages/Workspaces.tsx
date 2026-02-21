@@ -65,6 +65,15 @@ const Workspaces = () => {
           </Button>
         </div>
 
+        <Card className="mb-6 border-dashed">
+          <CardContent className="pt-5 text-sm text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">How to use Workspaces</p>
+            <p>1. Create one workspace per team/department/business unit.</p>
+            <p>2. Add members and roles, then create projects/tasks inside that workspace.</p>
+            <p>3. Switch workspace from header to keep data, planning and analytics scoped.</p>
+          </CardContent>
+        </Card>
+
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map(i => (

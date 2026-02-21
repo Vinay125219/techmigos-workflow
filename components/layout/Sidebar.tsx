@@ -19,7 +19,9 @@ import {
     Crown,
     User,
     Sparkles,
-    Command
+    Command,
+    Building2,
+    Wallet
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,8 +41,10 @@ import { EditProfileModal } from '@/components/profile/EditProfileModal';
 
 const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/workspaces', label: 'Workspaces', icon: Building2 },
     { path: '/projects', label: 'Projects', icon: FolderKanban },
     { path: '/tasks', label: 'Tasks', icon: ListTodo },
+    { path: '/documents', label: 'Documents', icon: FileText },
     { path: '/ideas', label: 'Ideas', icon: Lightbulb },
     { path: '/analytics', label: 'Analytics', icon: BarChart3 },
     { path: '/planning', label: 'Planning', icon: Rocket },
@@ -53,7 +57,9 @@ export function Sidebar() {
     const router = useRouter();
     const { user, profile, isManager, isAdmin, signOut } = useAuth();
 
-    const allNavItems = isManager ? [...navItems, managerNavItem] : navItems;
+    const allNavItems = isManager
+        ? [...navItems, { path: '/transactions', label: 'Transactions', icon: Wallet }, managerNavItem]
+        : navItems;
 
     const getRoleBadge = () => {
         if (isAdmin) return <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-destructive/10 text-destructive border-destructive/20 gap-0.5"><Shield className="w-3 h-3" /> Admin</Badge>;

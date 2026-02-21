@@ -1,24 +1,26 @@
 # Deployment Guide for Vercel
 
-This project is a Next.js application using Supabase. Follow these steps to deploy it to Vercel.
+This project is a Next.js application using Appwrite. Follow these steps to deploy it to Vercel.
 
 ## 1. Prerequisites
 
 -   A [Vercel](https://vercel.com) account.
--   Access to the [Supabase](https://supabase.com) project associated with this app.
+-   Access to the Appwrite project associated with this app.
 
 ## 2. Environment Variables
 
-When importing the project into Vercel, you must configure the following environment variables. You can find these values in your local `.env.local` file (EXCEPT for the password).
+When importing the project into Vercel, configure these environment variables from `.env.local`.
 
 | Variable Name | Description | Verified Safe? |
 | :--- | :--- | :--- |
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | ✅ Yes |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Your Supabase Anon Key | ✅ Yes |
-| `NEXT_PUBLIC_SUPABASE_PROJECT_ID` | Your Supabase Project ID | ✅ Yes |
+| `NEXT_PUBLIC_APPWRITE_ENDPOINT` | Appwrite endpoint with `/v1` | ✅ Yes |
+| `NEXT_PUBLIC_APPWRITE_PROJECT_ID` | Appwrite project ID | ✅ Yes |
+| `NEXT_PUBLIC_APPWRITE_DATABASE_ID` | Appwrite database ID | ✅ Yes |
+| `NEXT_PUBLIC_APPWRITE_COLLECTION_*` | Collection IDs used by app | ✅ Yes |
+| `NEXT_PUBLIC_APPWRITE_BUCKET_*` | Storage bucket IDs | ✅ Yes |
 
 > [!WARNING]
-> **DO NOT** add `NEXT_PUBLIC_SUPABASE_DB_PASSWORD` or `TEST_USER_PASSWORD` to your Vercel environment variables. These are not used in the client-side code and exposing them is a security risk.
+> Do not add private admin or API keys to `NEXT_PUBLIC_*` variables.
 
 ## 3. Build Configuration
 
@@ -35,3 +37,9 @@ Vercel should automatically detect the framework, but verify these settings:
 2.  Import the repository in Vercel.
 3.  Add the environment variables listed above.
 4.  Click **Deploy**.
+
+## 5. Post-Deploy Checks
+
+1.  Open `/auth` and test email sign-in.
+2.  Test Google OAuth sign-in.
+3.  Create a workspace and a task to verify database writes.

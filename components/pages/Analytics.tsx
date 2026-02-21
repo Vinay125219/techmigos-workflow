@@ -112,6 +112,10 @@ const Analytics = () => {
             <Activity className="w-5 h-5" />
             System Health & Usage
           </h2>
+          <p className="text-xs text-muted-foreground mb-3">
+            Counts are real from project/task records. Storage usage is real from documents file sizes.
+            Limits are {analytics.dataUsage.limitsSource === 'env' ? 'configured from environment values' : 'default placeholders'}.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <CardHeader className="pb-2">
@@ -426,4 +430,3 @@ const Analytics = () => {
 };
 
 export default Analytics;
-

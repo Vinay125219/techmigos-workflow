@@ -36,6 +36,7 @@ import { useAdminUsers } from '@/hooks/useAdminUsers';
 import { useTasks } from '@/hooks/useTasks';
 import { useProjects } from '@/hooks/useProjects';
 import { useActivityLogs } from '@/hooks/useActivityLogs';
+import { useGovernanceActions } from '@/hooks/useGovernanceActions';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { formatDistanceToNow, format, subDays, subWeeks, subMonths } from 'date-fns';
@@ -48,6 +49,7 @@ const Admin = () => {
   const { tasks } = useTasks();
   const { projects, deleteProject } = useProjects();
   const { logs } = useActivityLogs(1000);
+  const { actions, approveAction, rejectAction } = useGovernanceActions();
 
   // Audit log filters
   const [logUserFilter, setLogUserFilter] = useState('all');
@@ -390,7 +392,7 @@ const Admin = () => {
 
           {/* Oversight Tab */}
           <TabsContent value="oversight">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <Card>
                 <CardHeader><CardTitle>All Projects</CardTitle></CardHeader>
                 <CardContent>
@@ -429,6 +431,57 @@ const Admin = () => {
                       ))}
                       {tasks.filter(t => t.status === 'review').length === 0 && (
                         <p className="text-center text-muted-foreground py-8">No tasks in review</p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Action Approvals</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px]">
+                    <div className="space-y-2">
+                      {actions.filter((action) => action.status === 'pending').map((action) => (
+                        <div key={action.id} className="p-3 rounded-lg border">
+                          <p className="font-medium capitalize">{action.action_type.replace(/_/g, ' ')}</p>
+                          <p className="text-xs text-muted-foreground">Entity: {action.entity_type}</p>
+                          <div className="flex gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                const { error } = await approveAction(action);
+                                if (error) {
+                                  toast({ title: 'Approval failed', description: error.message, variant: 'destructive' });
+                                  return;
+                                }
+                                toast({ title: 'Approved', description: 'Action approved and executed.' });
+                              }}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={async () => {
+                                const { error } = await rejectAction(action.id);
+                                if (error) {
+                                  toast({ title: 'Reject failed', description: error.message, variant: 'destructive' });
+                                  return;
+                                }
+                                toast({ title: 'Rejected', description: 'Action request rejected.' });
+                              }}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {actions.filter((action) => action.status === 'pending').length === 0 && (
+                        <p className="text-center text-muted-foreground py-8">No pending action approvals</p>
                       )}
                     </div>
                   </ScrollArea>

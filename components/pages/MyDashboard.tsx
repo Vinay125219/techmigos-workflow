@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,18 +29,11 @@ const MyDashboard = () => {
   const params = useParams();
   const taskId = params?.taskId as string;
 
-  // Redirect if not authenticated
-  if (!loading && !isAuthenticated) {
-    router.replace('/auth');
-    return null;
-  }
-
-  // Show loading state while checking auth
-  if (loading) {
-    return null;
-  }
-
-
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      router.replace('/auth');
+    }
+  }, [loading, isAuthenticated, router]);
 
   const myTasks = useMemo(() => {
     return tasks.filter(t => t.assigned_to === user?.id);
@@ -98,6 +91,11 @@ const MyDashboard = () => {
     };
     return colors[priority];
   };
+
+  // Show loading state while checking auth
+  if (loading || !isAuthenticated) {
+    return null;
+  }
 
   // If taskId is present, show the task detail view
   if (taskId) {

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Rocket, UserPlus, Eye, EyeOff, AlertCircle, ArrowLeft, PartyPopper, CheckCircle2, Sparkles } from 'lucide-react';
+import { Rocket, UserPlus, Eye, EyeOff, AlertCircle, ArrowLeft, PartyPopper, CheckCircle2, Sparkles, Chrome } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,20 +10,50 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { z } from 'zod';
+import { getCompanyAllowedEmails } from '@/lib/company-policy';
 
 const emailSchema = z.string().email('Invalid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
 const nameSchema = z.string().min(2, 'Name must be at least 2 characters');
 
+function resolveRedirectPath(rawPath: string | null): string {
+  if (rawPath && rawPath.startsWith('/') && !rawPath.startsWith('//')) {
+    return rawPath;
+  }
+  return '/dashboard';
+}
+
+function getFirstZodMessage(error: unknown): string {
+  if (error instanceof z.ZodError) {
+    return error.issues[0]?.message || 'Invalid input';
+  }
+  return 'Invalid input';
+}
+
 export default function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { signIn, signUp, isAuthenticated } = useAuth();
+  const { signIn, signUp, signInWithGoogle, isAuthenticated } = useAuth();
+  const redirectTo = useMemo(() => resolveRedirectPath(searchParams.get('redirectTo')), [searchParams]);
+  const oauthStatus = searchParams.get('oauth');
+  const showConfirmation = searchParams.get('confirmed') === 'true';
+  const queryError = oauthStatus === 'error' ? 'Google sign-in failed. Please try again.' : '';
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [tab, setTab] = useState<'login' | 'signup'>('login');
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const sparkleParticles = useMemo(
+    () =>
+      Array.from({ length: 20 }, (_, index) => ({
+        id: index,
+        left: (index * 37) % 100,
+        top: (index * 53 + 17) % 100,
+        animationDelay: `${(index % 5) * 0.4}s`,
+        animationDuration: `${3 + (index % 4) * 0.5}s`,
+      })),
+    []
+  );
+  const companyAllowedEmails = useMemo(() => getCompanyAllowedEmails(), []);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -34,29 +64,30 @@ export default function AuthPage() {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
 
-  // Detect email confirmation from URL
-  useEffect(() => {
-    const confirmed = searchParams.get('confirmed');
-    const accessToken = typeof window !== 'undefined' ? window.location.hash.includes('access_token') : false;
+  const displayError = error || queryError;
 
-    if (confirmed === 'true' || accessToken) {
-      setShowConfirmation(true);
-      // Auto-redirect after showing celebration
+  useEffect(() => {
+    if (oauthStatus === 'success' && isAuthenticated) {
+      router.replace(redirectTo);
+    }
+
+    if (showConfirmation) {
+      // Auto-redirect after showing celebration.
       const timer = setTimeout(() => {
         if (isAuthenticated) {
-          router.push('/dashboard');
+          router.replace(redirectTo);
         }
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [searchParams, isAuthenticated, router]);
+  }, [oauthStatus, showConfirmation, isAuthenticated, router, redirectTo]);
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated && !showConfirmation) {
-      router.push('/dashboard');
+      router.replace(redirectTo);
     }
-  }, [isAuthenticated, showConfirmation, router]);
+  }, [isAuthenticated, showConfirmation, router, redirectTo]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,8 +96,8 @@ export default function AuthPage() {
     try {
       emailSchema.parse(loginEmail);
       passwordSchema.parse(loginPassword);
-    } catch (err: any) {
-      setError(err.errors?.[0]?.message || 'Invalid input');
+    } catch (err: unknown) {
+      setError(getFirstZodMessage(err));
       return;
     }
 
@@ -76,7 +107,7 @@ export default function AuthPage() {
     if (error) {
       setError(error.message || 'Failed to sign in');
     } else {
-      router.push('/dashboard');
+      router.replace(redirectTo);
     }
 
     setIsLoading(false);
@@ -90,8 +121,8 @@ export default function AuthPage() {
       nameSchema.parse(signupName);
       emailSchema.parse(signupEmail);
       passwordSchema.parse(signupPassword);
-    } catch (err: any) {
-      setError(err.errors?.[0]?.message || 'Invalid input');
+    } catch (err: unknown) {
+      setError(getFirstZodMessage(err));
       return;
     }
 
@@ -126,21 +157,32 @@ export default function AuthPage() {
     setIsLoading(false);
   };
 
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setIsLoading(true);
+
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setError(error.message || 'Failed to connect with Google');
+      setIsLoading(false);
+    }
+  };
+
   // Show celebration screen when email is confirmed
   if (showConfirmation) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-background via-secondary/20 to-background overflow-hidden">
         {/* Animated background particles */}
         <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          {[...Array(20)].map((_, i) => (
+          {sparkleParticles.map((particle) => (
             <div
-              key={i}
+              key={particle.id}
               className="absolute animate-float"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 2}s`,
-                animationDuration: `${3 + Math.random() * 2}s`,
+                left: `${particle.left}%`,
+                top: `${particle.top}%`,
+                animationDelay: particle.animationDelay,
+                animationDuration: particle.animationDuration,
               }}
             >
               <Sparkles className="w-4 h-4 text-primary/30" />
@@ -177,7 +219,7 @@ export default function AuthPage() {
           <Button
             size="lg"
             className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg shadow-green-500/30 animate-pulse"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.replace(redirectTo)}
           >
             <Rocket className="w-5 h-5 mr-2" />
             Start Your Journey
@@ -230,10 +272,10 @@ export default function AuthPage() {
 
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4">
-                  {error && (
+                  {displayError && (
                     <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      {error}
+                      {displayError}
                     </div>
                   )}
 
@@ -277,15 +319,43 @@ export default function AuthPage() {
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Signing in...' : 'Sign In'}
                   </Button>
+
+                  <div className="relative py-2">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-border" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">or</span>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleGoogleSignIn}
+                    disabled={isLoading}
+                  >
+                    <Chrome className="w-4 h-4 mr-2" />
+                    Continue with Google
+                  </Button>
                 </form>
               </TabsContent>
 
               <TabsContent value="signup">
                 <form onSubmit={handleSignUp} className="space-y-4">
-                  {error && (
+                  <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
+                    Company policy: only approved company members can register.
+                    {companyAllowedEmails.length > 0 && (
+                      <div className="mt-1 text-muted-foreground">
+                        Approved emails: {companyAllowedEmails.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                  {displayError && (
                     <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      {error}
+                      {displayError}
                     </div>
                   )}
 
@@ -342,6 +412,26 @@ export default function AuthPage() {
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     <UserPlus className="w-4 h-4 mr-2" />
                     {isLoading ? 'Creating account...' : 'Create Account'}
+                  </Button>
+
+                  <div className="relative py-2">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-border" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">or</span>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleGoogleSignIn}
+                    disabled={isLoading}
+                  >
+                    <Chrome className="w-4 h-4 mr-2" />
+                    Continue with Google
                   </Button>
                 </form>
               </TabsContent>

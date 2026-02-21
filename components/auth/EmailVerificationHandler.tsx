@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
+import type { AuthSession } from '@/types/auth';
 import {
     Dialog,
     DialogContent,
@@ -11,6 +12,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Mail, PartyPopper, Sparkles } from 'lucide-react';
 
+function resolveRedirectPath(rawPath: string | null): string {
+    if (rawPath && rawPath.startsWith('/') && !rawPath.startsWith('//')) {
+        return rawPath;
+    }
+    return '/dashboard';
+}
+
 export function EmailVerificationHandler() {
     const router = useRouter();
     const [showVerifiedDialog, setShowVerifiedDialog] = useState(false);
@@ -18,37 +26,19 @@ export function EmailVerificationHandler() {
     const [email, setEmail] = useState<string | null>(null);
 
     useEffect(() => {
-        // Check URL for email verification tokens (Supabase adds these after email click)
         if (typeof window === 'undefined') return;
 
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const type = hashParams.get('type');
-        const accessToken = hashParams.get('access_token');
-
-        // If this is an email confirmation callback
-        if (type === 'signup' && accessToken) {
-            setShowVerifiedDialog(true);
-            // Clean up the URL
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-        // Listen for auth state changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN' && session?.user?.email_confirmed_at) {
-                // User just confirmed their email
-                const confirmTime = new Date(session.user.email_confirmed_at);
-                const now = new Date();
-                const timeDiff = now.getTime() - confirmTime.getTime();
-
-                // If confirmed within last 30 seconds, show the popup
-                if (timeDiff < 30000) {
-                    setShowVerifiedDialog(true);
-                }
+        const { data: { subscription } } = backend.auth.onAuthStateChange((event: string, session: AuthSession | null) => {
+            if (event === 'SIGNED_IN' && session?.user && window.location.pathname.startsWith('/auth')) {
+                const params = new URLSearchParams(window.location.search);
+                router.replace(resolveRedirectPath(params.get('redirectTo')));
             }
         });
 
-        return () => subscription.unsubscribe();
-    }, []);
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, [router]);
 
     // Function to show "Please verify email" dialog after signup
     const showPendingVerification = (userEmail: string) => {
@@ -128,7 +118,7 @@ export function EmailVerificationHandler() {
                                 Verify Your Email
                             </DialogTitle>
                             <DialogDescription className="text-base">
-                                We've sent a verification link to:
+                                We&apos;ve sent a verification link to:
                             </DialogDescription>
                         </DialogHeader>
 
@@ -141,7 +131,7 @@ export function EmailVerificationHandler() {
                                 Please check your inbox and click the verification link to activate your account.
                             </p>
                             <div className="text-xs text-muted-foreground/70 space-y-1">
-                                <p>• Check your spam folder if you don't see the email</p>
+                                <p>• Check your spam folder if you don&apos;t see the email</p>
                                 <p>• The link expires in 24 hours</p>
                             </div>
                             <Button

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Settings, X, Camera, Upload, Loader2, Check, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import Cropper from 'react-easy-crop';
@@ -114,14 +114,14 @@ export function EditProfileModal({ trigger }: EditProfileModalProps) {
       const fileName = `${user.id}/avatar-${Date.now()}.jpg`;
       const file = new File([croppedImageBlob], 'avatar.jpg', { type: 'image/jpeg' });
 
-      // Upload to Supabase
-      const { error: uploadError } = await supabase.storage
+      // Upload to backend storage
+      const { error: uploadError } = await backend.storage
         .from('avatars')
         .upload(fileName, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = backend.storage
         .from('avatars')
         .getPublicUrl(fileName);
 

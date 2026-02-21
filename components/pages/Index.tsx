@@ -43,6 +43,7 @@ import { useProjects } from '@/hooks/useProjects';
 import { useTasks } from '@/hooks/useTasks';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { MemberProfileSheet } from '@/components/dashboard/MemberProfileSheet';
@@ -50,9 +51,10 @@ import type { Task, Profile } from '@/types/database';
 
 const Index = () => {
   const router = useRouter();
-  const { projects, loading: projectsLoading } = useProjects();
-  const { tasks, takeTask, loading: tasksLoading } = useTasks();
-  const { members: teamMembers, teamCount } = useTeamMembers();
+  const { activeWorkspaceId } = useWorkspaceContext();
+  const { projects, loading: projectsLoading } = useProjects({ workspaceId: activeWorkspaceId });
+  const { tasks, takeTask, loading: tasksLoading } = useTasks({ workspaceId: activeWorkspaceId });
+  const { members: teamMembers, teamCount } = useTeamMembers({ workspaceId: activeWorkspaceId });
   const { profile, isAuthenticated, user, isManager } = useAuth();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [taskFilter, setTaskFilter] = useState<'available' | 'my-tasks' | 'all'>('available');

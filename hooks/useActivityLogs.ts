@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { backend } from '@/integrations/backend/client';
 
 export interface ActivityLog {
     id: string;
@@ -21,7 +20,6 @@ export interface ActivityLog {
 }
 
 export function useActivityLogs(limit: number = 50) {
-    const { user } = useAuth();
     const [logs, setLogs] = useState<ActivityLog[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -29,12 +27,9 @@ export function useActivityLogs(limit: number = 50) {
         try {
             setLoading(true);
 
-            const { data, error } = await supabase
+            const { data, error } = await backend
                 .from('activity_logs')
-                .select(`
-          *,
-          user:profiles(id, full_name, avatar_url)
-        `)
+                .select('*')
                 .order('created_at', { ascending: false })
                 .limit(limit);
 
@@ -45,7 +40,29 @@ export function useActivityLogs(limit: number = 50) {
                 return;
             }
 
-            setLogs((data || []) as unknown as ActivityLog[]);
+            const baseLogs = (data || []) as unknown as ActivityLog[];
+            const userIds = Array.from(new Set(baseLogs.map(log => log.user_id).filter(Boolean))) as string[];
+
+            if (userIds.length === 0) {
+                setLogs(baseLogs);
+                return;
+            }
+
+            const { data: profiles } = await backend
+                .from('profiles')
+                .select('id, full_name, avatar_url')
+                .in('id', userIds);
+
+            const profileMap = new Map(
+                ((profiles || []) as Array<{ id: string; full_name: string | null; avatar_url: string | null }>).map(profile => [profile.id, profile])
+            );
+
+            const logsWithUsers = baseLogs.map(log => ({
+                ...log,
+                user: log.user_id ? profileMap.get(log.user_id) : undefined,
+            }));
+
+            setLogs(logsWithUsers);
         } catch (err) {
             console.error('Error fetching activity logs:', err);
             setLogs([]);
@@ -58,7 +75,7 @@ export function useActivityLogs(limit: number = 50) {
         fetchLogs();
 
         // Subscribe to real-time updates
-        const channel = supabase
+        const channel = backend
             .channel('activity-logs-changes')
             .on('postgres_changes', {
                 event: 'INSERT',
@@ -70,7 +87,7 @@ export function useActivityLogs(limit: number = 50) {
             .subscribe();
 
         return () => {
-            supabase.removeChannel(channel);
+            backend.removeChannel(channel);
         };
     }, [fetchLogs]);
 

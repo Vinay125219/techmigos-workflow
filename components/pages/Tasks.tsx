@@ -7,34 +7,38 @@ import { TaskCard } from '@/components/tasks/TaskCard';
 import { TaskFilters, type TaskFiltersState } from '@/components/tasks/TaskFilters';
 import { TaskDetailModal } from '@/components/tasks/TaskDetailModal';
 import { CreateTaskModal } from '@/components/tasks/CreateTaskModal';
+import { TaskAutomationPanel } from '@/components/tasks/TaskAutomationPanel';
 import { Badge } from '@/components/ui/badge';
 import { TaskCardSkeleton } from '@/components/ui/card-skeletons';
 import { useTasks } from '@/hooks/useTasks';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { Task } from '@/types/database';
 
 import { LayoutGrid, Columns } from 'lucide-react';
 import { KanbanBoard } from '@/components/tasks/KanbanBoard';
-import { supabase } from '@/integrations/supabase/client';
+import { backend } from '@/integrations/backend/client';
 
 const Tasks = () => {
-  const { tasks, takeTask, loading } = useTasks();
+  const { activeWorkspaceId } = useWorkspaceContext();
   const { isAuthenticated, user, isManager } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'board'>('grid');
+  const [page, setPage] = useState(1);
+  const pageSize = 24;
 
   const handleTaskUpdate = async (task: Task, newStatus: string) => {
     // 1. Optimistic Update (Assuming tasks comes from useTasks hook which exposes setTasks or we mutate it locally via SWR/Query revalidation)
     // Since useTasks returns `tasks`, we rely on Realtime which we verified is active.
-    // So we just fire the update to Supabase, and the realtime subscription in useTasks will update the UI automatically!
+    // So we just fire the update to backend and let subscriptions refresh UI.
     // BUT for "instant" drag feel, we might want local mutation if realtime has latency. 
     // For now, let's trust Realtime or just fire the update.
 
-    const { error } = await supabase
+    const { error } = await backend
       .from('tasks')
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', task.id);
@@ -59,7 +63,6 @@ const Tasks = () => {
   const projectFilter = searchParams.get('project');
   const statusFromUrl = searchParams.get('status');
   const assigneeFromUrl = searchParams.get('assignee');
-  const filteredProject = projectFilter ? tasks.find(t => t.project_id === projectFilter)?.project : null;
 
   const [filters, setFilters] = useState<TaskFiltersState>({
     search: '',
@@ -70,6 +73,28 @@ const Tasks = () => {
     sortBy: 'newest',
     assignee: assigneeFromUrl || 'all',
   });
+
+  const serverStatusFilter =
+    viewMode === 'board' || filters.status === 'all' || filters.status === 'available'
+      ? undefined
+      : filters.status;
+  const serverAssigneeFilter =
+    filters.assignee === 'all'
+      ? undefined
+      : filters.assignee === 'me'
+        ? user?.id || undefined
+        : filters.assignee;
+
+  const { tasks, takeTask, loading, totalCount, hasMore } = useTasks({
+    projectId: projectFilter || undefined,
+    workspaceId: activeWorkspaceId,
+    page,
+    pageSize,
+    search: filters.search || undefined,
+    status: serverStatusFilter,
+    assignee: serverAssigneeFilter,
+  });
+  const filteredProject = projectFilter ? tasks.find(t => t.project_id === projectFilter)?.project : null;
 
   // Update filters when URL status or assignee changes
   useEffect(() => {
@@ -88,6 +113,10 @@ const Tasks = () => {
       setFilters(prev => ({ ...prev, ...newFilters }));
     }
   }, [searchParams, filters.status, filters.assignee]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters.search, filters.priority, filters.difficulty, filters.skill, filters.status, filters.assignee, activeWorkspaceId, projectFilter]);
 
   // Handle highlight from notification click
   useEffect(() => {
@@ -153,7 +182,7 @@ const Tasks = () => {
       default: result.reverse();
     }
     return result;
-  }, [tasks, filters]);
+  }, [tasks, filters, projectFilter, viewMode, isAuthenticated, user?.id]);
 
   const stats = useMemo(() => {
     // If a project is selected, calculate stats only for that project
@@ -199,6 +228,8 @@ const Tasks = () => {
           </div>
           {isManager && <CreateTaskModal />}
         </div>
+
+        <TaskAutomationPanel workspaceId={activeWorkspaceId} />
 
         <div className="flex flex-wrap gap-3 mb-6">
           <button
@@ -259,7 +290,9 @@ const Tasks = () => {
         </div>
 
         <div className="mb-6"><TaskFilters filters={filters} onFiltersChange={setFilters} availableSkills={availableSkills} /></div>
-        <div className="mb-4 text-sm text-muted-foreground">Showing {filteredTasks.length} of {tasks.length} tasks</div>
+        <div className="mb-4 text-sm text-muted-foreground">
+          Showing {filteredTasks.length} of {totalCount || tasks.length} tasks
+        </div>
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -281,6 +314,25 @@ const Tasks = () => {
         ) : (
           <div className="text-center py-16"><p className="text-muted-foreground">No tasks found.</p></div>
         )}
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Page {page}</p>
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-1.5 rounded-md border text-sm disabled:opacity-50"
+              disabled={page === 1}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              Previous
+            </button>
+            <button
+              className="px-3 py-1.5 rounded-md border text-sm disabled:opacity-50"
+              disabled={!hasMore}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
       <TaskDetailModal task={selectedTask} open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTask(null)} onTakeTask={handleTakeTask} />
     </Layout>

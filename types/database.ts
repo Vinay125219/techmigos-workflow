@@ -1,6 +1,20 @@
-// Database types matching our Supabase schema
+// Database types matching the shared backend schema
 export type AppRole = 'admin' | 'manager' | 'member';
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
+export type CompanyTransactionType =
+  | 'income'
+  | 'expense'
+  | 'transfer'
+  | 'salary'
+  | 'refund'
+  | 'reimbursement'
+  | 'investment'
+  | 'tax'
+  | 'subscription'
+  | 'invoice'
+  | 'loan'
+  | 'grant'
+  | 'other';
 
 // Salary types removed
 
@@ -152,9 +166,13 @@ export interface Document {
   file_url: string;
   file_size: number;
   status: 'active' | 'draft' | 'archived' | 'reviewed';
+  version: number;
+  parent_document_id: string | null;
+  workspace_id: string | null;
   project_id: string | null;
   task_id: string | null;
   created_by: string | null;
+  owner_id: string | null;
   created_at: string;
   updated_at: string;
   // Virtual fields
@@ -198,6 +216,129 @@ export interface UserOnboarding {
   updated_at: string;
 }
 
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  title: string;
+  description: string | null;
+  priority: Task['priority'];
+  difficulty: Task['difficulty'];
+  estimated_hours: number | null;
+  requirements: string | null;
+  deliverables: string | null;
+  skills: string[];
+  project_id: string | null;
+  workspace_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecurringTask {
+  id: string;
+  template_id: string | null;
+  title: string;
+  description: string | null;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  interval_value: number;
+  next_run_at: string;
+  last_run_at: string | null;
+  project_id: string | null;
+  workspace_id: string | null;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApprovalRule {
+  id: string;
+  workspace_id: string | null;
+  project_id: string | null;
+  required_approvals: number;
+  sla_hours: number;
+  escalate_to_roles: AppRole[];
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskApproval {
+  id: string;
+  task_id: string;
+  workspace_id: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'escalated';
+  requested_by: string | null;
+  requested_at: string;
+  due_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejected_by: string | null;
+  rejected_at: string | null;
+  required_approvals: number;
+  approval_count: number;
+  comments: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NotificationPreferences {
+  id: string;
+  user_id: string;
+  in_app_enabled: boolean;
+  email_enabled: boolean;
+  digest_enabled: boolean;
+  muted_until: string | null;
+  snoozed_until: string | null;
+  type_preferences: Record<string, boolean>;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface CompanyTransaction {
+  id: string;
+  workspace_id: string | null;
+  transaction_type: CompanyTransactionType;
+  category: string;
+  title: string;
+  description: string | null;
+  amount: number;
+  currency: string;
+  transaction_date: string;
+  reference: string | null;
+  paid_by: string | null;
+  credited_to: string | null;
+  proof_url: string | null;
+  proof_type: string | null;
+  proof_name: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoleHistory {
+  id: string;
+  user_id: string;
+  changed_by: string | null;
+  role: AppRole;
+  change_type: 'granted' | 'revoked';
+  reason: string | null;
+  created_at: string;
+}
+
+export interface GovernanceAction {
+  id: string;
+  action_type: string;
+  entity_type: string;
+  entity_id: string | null;
+  payload: Record<string, unknown>;
+  requested_by: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 
 // Salary Management Types Removed
-

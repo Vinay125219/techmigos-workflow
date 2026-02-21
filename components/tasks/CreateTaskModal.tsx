@@ -13,6 +13,7 @@ import { useTasks } from '@/hooks/useTasks';
 import { useProjects } from '@/hooks/useProjects';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWorkspaceContext } from '@/contexts/WorkspaceContext';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -26,8 +27,9 @@ const COMMON_SKILLS = ['JavaScript', 'TypeScript', 'React', 'Node.js', 'Python',
 
 export function CreateTaskModal() {
   const { createTask } = useTasks();
-  const { projects } = useProjects();
-  const { members: teamMembers } = useTeamMembers();
+  const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
+  const { projects } = useProjects({ workspaceId: activeWorkspaceId });
+  const { members: teamMembers } = useTeamMembers({ workspaceId: activeWorkspaceId });
   const { isManager } = useAuth();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -91,7 +93,7 @@ export function CreateTaskModal() {
       title: title.trim(),
       description: description.trim() || null,
       project_id: projectId && projectId !== 'none' ? projectId : null,
-      workspace_id: null,
+      workspace_id: activeWorkspaceId,
       priority,
       difficulty,
       estimated_hours: estimatedHours ? parseInt(estimatedHours) : null,
@@ -125,6 +127,11 @@ export function CreateTaskModal() {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Task</DialogTitle>
+          {activeWorkspace && (
+            <p className="text-sm text-muted-foreground">
+              Workspace: <span className="font-medium">{activeWorkspace.name}</span>
+            </p>
+          )}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

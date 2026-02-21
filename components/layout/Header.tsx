@@ -4,6 +4,7 @@ import { MobileNav } from './MobileNav';
 import { usePathname } from 'next/navigation';
 import { ChevronRight, Home } from 'lucide-react';
 import Link from 'next/link';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 export function Header() {
     const pathname = usePathname();
@@ -41,6 +42,7 @@ export function Header() {
             </div>
 
             <div className="flex items-center gap-3">
+                <WorkspaceSwitcher />
                 {/* Right side actions - Notifications */}
                 <NotificationPanel />
             </div>

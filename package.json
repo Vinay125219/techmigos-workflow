@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "appwrite:setup": "bash ./scripts/setup-appwrite.sh",
+    "appwrite:setup:dry-run": "APPWRITE_DRY_RUN=1 bash ./scripts/setup-appwrite.sh",
+    "jobs:schedulers": "tsx scripts/run-schedulers.ts",
     "analyze": "cross-env ANALYZE=true next build --webpack",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },
@@ -43,12 +48,11 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.91.1",
     "@tanstack/react-query": "^5.90.20",
     "@tiptap/extension-placeholder": "^3.17.0",
     "@tiptap/react": "^3.17.0",
     "@tiptap/starter-kit": "^3.17.0",
+    "appwrite": "^22.3.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -58,6 +62,8 @@
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.29.0",
     "input-otp": "^1.4.2",
+    "jspdf": "^4.2.0",
+    "jspdf-autotable": "^5.0.7",
     "lucide-react": "^0.563.0",
     "next": "16.1.4",
     "next-themes": "^0.4.6",
@@ -84,6 +90,7 @@
     "eslint-config-next": "16.1.4",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
