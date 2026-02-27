@@ -4,13 +4,25 @@ import type { Profile, UserRole, AppRole } from '@/types/database';
 import type { AuthUser, AuthSession } from '@/types/auth';
 import {
   COMPANY_ACCESS_ERROR,
+  getCompanyPolicyFromEnv,
+  getCompanyPolicyFromSource,
   getPrivilegedEmailRole,
   isCompanyEmailAllowed,
+  isMissingCollectionError as isMissingPolicyCollectionError,
+  type CompanyPolicy,
 } from '@/lib/company-policy';
 
 const projectId = process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID?.trim();
 const appwriteSessionCookie = projectId ? `a_session_${projectId}` : null;
 const localSessionMarkerCookie = 'tm_auth';
+const authErrorStorageKey = 'tm_auth_error';
+type CompanyPolicySource = 'remote' | 'env' | 'env-auth-fallback';
+
+function isAuthUnavailableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const typed = error as { status?: number; code?: number };
+  return typed.status === 401 || typed.status === 403 || typed.code === 401 || typed.code === 403;
+}
 
 function buildDefaultProfile(user: AuthUser): Profile {
   const now = new Date().toISOString();
@@ -53,6 +65,24 @@ function syncSessionMarkerCookie(authenticated: boolean): void {
   }
 }
 
+function setAuthErrorMarker(message: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(authErrorStorageKey, message);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function clearAuthErrorMarker(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(authErrorStorageKey);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 export function useBackendAuth() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -60,21 +90,65 @@ export function useBackendAuth() {
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const loadCompanyPolicy = useCallback(async (): Promise<{ policy: CompanyPolicy; source: CompanyPolicySource }> => {
+    const envPolicy = getCompanyPolicyFromEnv();
+
+    try {
+      const { data, error } = await backend
+        .from('company_policy')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        if (isAuthUnavailableError(error)) {
+          return { policy: envPolicy, source: 'env-auth-fallback' };
+        }
+
+        if (isMissingPolicyCollectionError(error)) {
+          return { policy: envPolicy, source: 'env' };
+        }
+
+        console.warn('Failed to load company policy; falling back to env configuration.', error);
+        return { policy: envPolicy, source: 'env' };
+      }
+
+      if (!data) {
+        return { policy: envPolicy, source: 'env' };
+      }
+
+      return { policy: getCompanyPolicyFromSource(data as Record<string, unknown>), source: 'remote' };
+    } catch (error) {
+      if (isAuthUnavailableError(error)) {
+        return { policy: envPolicy, source: 'env-auth-fallback' };
+      }
+
+      if (isMissingPolicyCollectionError(error)) {
+        return { policy: envPolicy, source: 'env' };
+      }
+
+      console.warn('Company policy fetch threw unexpectedly; using env configuration.', error);
+      return { policy: envPolicy, source: 'env' };
+    }
+  }, []);
+
   // Fetch profile and roles
   const fetchUserData = useCallback(async (authUser: AuthUser) => {
     try {
+      const { policy } = await loadCompanyPolicy();
+      const normalizedEmail = (authUser.email || '').toLowerCase();
+
+      if (!isCompanyEmailAllowed(normalizedEmail, policy)) {
+        await backend.auth.signOut();
+        throw new Error(COMPANY_ACCESS_ERROR);
+      }
+
       const [profileResult, rolesResult] = await Promise.all([
         backend.from('profiles').select('*').eq('id', authUser.id).maybeSingle(),
         backend.from('user_roles').select('*').eq('user_id', authUser.id),
       ]);
 
       let nextProfile = profileResult.data as Profile | null;
-      const normalizedEmail = (authUser.email || '').toLowerCase();
-
-      if (!nextProfile && !isCompanyEmailAllowed(normalizedEmail)) {
-        await backend.auth.signOut();
-        throw new Error(COMPANY_ACCESS_ERROR);
-      }
 
       if (!nextProfile) {
         const defaultProfile = buildDefaultProfile(authUser);
@@ -108,16 +182,18 @@ export function useBackendAuth() {
       }
 
       setRoles(nextRoles);
+      clearAuthErrorMarker();
     } catch (error) {
       console.error('Error fetching user data:', error);
       if (error instanceof Error && error.message === COMPANY_ACCESS_ERROR) {
+        setAuthErrorMarker(COMPANY_ACCESS_ERROR);
         setUser(null);
         setSession(null);
         setProfile(null);
         setRoles([]);
       }
     }
-  }, []);
+  }, [loadCompanyPolicy]);
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -158,7 +234,9 @@ export function useBackendAuth() {
   }, [fetchUserData]);
 
   const signUp = async (email: string, password: string, fullName: string) => {
-    if (!isCompanyEmailAllowed(email)) {
+    const { policy, source } = await loadCompanyPolicy();
+    if (source !== 'env-auth-fallback' && !isCompanyEmailAllowed(email, policy)) {
+      setAuthErrorMarker(COMPANY_ACCESS_ERROR);
       return {
         data: null,
         error: new Error(COMPANY_ACCESS_ERROR),
@@ -187,20 +265,13 @@ export function useBackendAuth() {
   };
 
   const signIn = async (email: string, password: string) => {
-    if (!isCompanyEmailAllowed(email)) {
-      // Allow existing users already provisioned in the system.
-      const { data: existingProfile } = await backend
-        .from('profiles')
-        .select('id')
-        .eq('email', email.toLowerCase())
-        .maybeSingle();
-
-      if (!existingProfile) {
-        return {
-          data: null,
-          error: new Error(COMPANY_ACCESS_ERROR),
-        };
-      }
+    const { policy, source } = await loadCompanyPolicy();
+    if (source !== 'env-auth-fallback' && !isCompanyEmailAllowed(email, policy)) {
+      setAuthErrorMarker(COMPANY_ACCESS_ERROR);
+      return {
+        data: null,
+        error: new Error(COMPANY_ACCESS_ERROR),
+      };
     }
 
     const { data, error } = await backend.auth.signInWithPassword({
@@ -210,6 +281,7 @@ export function useBackendAuth() {
 
     if (!error && data?.user) {
       await fetchUserData(data.user as AuthUser);
+      clearAuthErrorMarker();
     }
 
     return { data, error };
@@ -220,6 +292,7 @@ export function useBackendAuth() {
     const failureRedirectTo = `${window.location.origin}/auth?oauth=error`;
 
     try {
+      clearAuthErrorMarker();
       window.sessionStorage.setItem('tm_oauth_pending', '1');
     } catch {
       // Ignore storage errors in hardened/private browser modes.
@@ -248,6 +321,7 @@ export function useBackendAuth() {
     const { error } = await backend.auth.signOut();
     if (!error) {
       syncSessionMarkerCookie(false);
+      clearAuthErrorMarker();
       setUser(null);
       setSession(null);
       setProfile(null);

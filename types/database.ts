@@ -15,6 +15,7 @@ export type CompanyTransactionType =
   | 'loan'
   | 'grant'
   | 'other';
+export type CompanyTransactionSettlementStatus = 'settled' | 'unsettled';
 
 // Salary types removed
 
@@ -298,11 +299,21 @@ export interface NotificationPreferences {
 export interface CompanyTransaction {
   id: string;
   workspace_id: string | null;
+  project_id: string | null;
   transaction_type: CompanyTransactionType;
+  settlement_status: CompanyTransactionSettlementStatus;
+  settled_on: string | null;
   category: string;
   title: string;
   description: string | null;
   amount: number;
+  actual_project_value: number | null;
+  advance_taken: number | null;
+  team_member_count: number | null;
+  team_allocation_amount: number | null;
+  company_buffer_amount: number | null;
+  team_member_share: number | null;
+  team_member_payouts_json: string | null;
   currency: string;
   transaction_date: string;
   reference: string | null;

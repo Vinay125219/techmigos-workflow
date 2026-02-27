@@ -74,7 +74,7 @@ is_already_exists_error() {
 
 is_retryable_schema_error() {
   local text="$1"
-  echo "$text" | grep -Eqi 'not available|in progress|processing|attribute.+not found|index.+not found|resource is not ready|bad gateway|gateway timeout|service unavailable|internal server error|too many requests|timed out'
+  echo "$text" | grep -Eqi 'not available|in progress|processing|attribute.+not found|index.+not found|resource is not ready|bad gateway|gateway timeout|service unavailable|internal server error|too many requests|timed out|first byte timeout|error 503|status 503'
 }
 
 load_cli_api_key_from_prefs() {
@@ -263,6 +263,7 @@ COL_TASK_DEPENDENCIES="${NEXT_PUBLIC_APPWRITE_COLLECTION_TASK_DEPENDENCIES:-task
 COL_ACTIVITY_LOGS="${NEXT_PUBLIC_APPWRITE_COLLECTION_ACTIVITY_LOGS:-activity_logs}"
 COL_NOTIFICATIONS="${NEXT_PUBLIC_APPWRITE_COLLECTION_NOTIFICATIONS:-notifications}"
 COL_NOTIFICATION_PREFERENCES="${NEXT_PUBLIC_APPWRITE_COLLECTION_NOTIFICATION_PREFERENCES:-notification_preferences}"
+COL_COMPANY_POLICY="${NEXT_PUBLIC_APPWRITE_COLLECTION_COMPANY_POLICY:-company_policy}"
 COL_COMPANY_TRANSACTIONS="${NEXT_PUBLIC_APPWRITE_COLLECTION_COMPANY_TRANSACTIONS:-company_transactions}"
 COL_IDEAS="${NEXT_PUBLIC_APPWRITE_COLLECTION_IDEAS:-ideas}"
 COL_IDEA_VOTES="${NEXT_PUBLIC_APPWRITE_COLLECTION_IDEA_VOTES:-idea_votes}"
@@ -341,6 +342,7 @@ create_collection "$COL_TASK_DEPENDENCIES" "Task Dependencies" "${COLLECTION_PER
 create_collection "$COL_ACTIVITY_LOGS" "Activity Logs" "${COLLECTION_PERMISSIONS[@]}"
 create_collection "$COL_NOTIFICATIONS" "Notifications" "${COLLECTION_PERMISSIONS[@]}"
 create_collection "$COL_NOTIFICATION_PREFERENCES" "Notification Preferences" "${COLLECTION_PERMISSIONS[@]}"
+create_collection "$COL_COMPANY_POLICY" "Company Policy" "${COLLECTION_PERMISSIONS[@]}"
 create_collection "$COL_COMPANY_TRANSACTIONS" "Company Transactions" "${COLLECTION_PERMISSIONS[@]}"
 create_collection "$COL_IDEAS" "Ideas" "${COLLECTION_PERMISSIONS[@]}"
 create_collection "$COL_IDEA_VOTES" "Idea Votes" "${COLLECTION_PERMISSIONS[@]}"
@@ -454,14 +456,32 @@ run_allow_exists "notification_preferences.type_preferences" appwrite databases 
 run_allow_exists "notification_preferences.created_at" appwrite databases create-datetime-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_NOTIFICATION_PREFERENCES" --key "created_at" --required true
 run_allow_exists "notification_preferences.updated_at" appwrite databases create-datetime-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_NOTIFICATION_PREFERENCES" --key "updated_at" --required true
 
+# company_policy
+run_allow_exists "company_policy.access_mode" appwrite databases create-enum-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_POLICY" --key "access_mode" --elements open allowlist --required true
+run_allow_exists "company_policy.allowed_emails" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_POLICY" --key "allowed_emails" --size 320 --required false --array true
+run_allow_exists "company_policy.updated_by" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_POLICY" --key "updated_by" --size 64 --required false
+run_allow_exists "company_policy.created_at" appwrite databases create-datetime-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_POLICY" --key "created_at" --required true
+run_allow_exists "company_policy.updated_at" appwrite databases create-datetime-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_POLICY" --key "updated_at" --required true
+
 # company_transactions
 run_allow_exists "company_transactions.workspace_id" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "workspace_id" --size 64 --required false
+run_allow_exists "company_transactions.project_id" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "project_id" --size 64 --required false
 run_allow_exists "company_transactions.transaction_type" appwrite databases create-enum-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "transaction_type" --elements income expense transfer salary refund reimbursement investment tax subscription invoice loan grant other --required false --xdefault other
 run_retryable "company_transactions.transaction_type (update enum values)" 8 appwrite databases update-enum-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "transaction_type" --elements income expense transfer salary refund reimbursement investment tax subscription invoice loan grant other --required false --xdefault other
+run_allow_exists "company_transactions.settlement_status" appwrite databases create-enum-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "settlement_status" --elements settled unsettled --required false --xdefault settled
+run_retryable "company_transactions.settlement_status (update enum values)" 8 appwrite databases update-enum-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "settlement_status" --elements settled unsettled --required false --xdefault settled
+run_allow_exists "company_transactions.settled_on" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "settled_on" --size 32 --required false
 run_allow_exists "company_transactions.category" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "category" --size 120 --required true
 run_allow_exists "company_transactions.title" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "title" --size 255 --required true
 run_allow_exists "company_transactions.description" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "description" --size 65535 --required false
 run_allow_exists "company_transactions.amount" appwrite databases create-float-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "amount" --required true --min 0
+run_allow_exists "company_transactions.actual_project_value" appwrite databases create-float-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "actual_project_value" --required false --min 0
+run_allow_exists "company_transactions.advance_taken" appwrite databases create-float-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "advance_taken" --required false --min 0
+run_allow_exists "company_transactions.team_member_count" appwrite databases create-integer-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "team_member_count" --required false --min 1
+run_allow_exists "company_transactions.team_allocation_amount" appwrite databases create-float-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "team_allocation_amount" --required false --min 0
+run_allow_exists "company_transactions.company_buffer_amount" appwrite databases create-float-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "company_buffer_amount" --required false --min 0
+run_allow_exists "company_transactions.team_member_share" appwrite databases create-float-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "team_member_share" --required false --min 0
+run_allow_exists "company_transactions.team_member_payouts_json" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "team_member_payouts_json" --size 65535 --required false
 run_allow_exists "company_transactions.currency" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "currency" --size 10 --required true
 run_allow_exists "company_transactions.transaction_date" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "transaction_date" --size 32 --required true
 run_allow_exists "company_transactions.reference" appwrite databases create-string-attribute --database-id "$APPWRITE_DATABASE_ID" --collection-id "$COL_COMPANY_TRANSACTIONS" --key "reference" --size 255 --required false
@@ -561,8 +581,13 @@ create_index "$COL_NOTIFICATION_PREFERENCES" "np_user_id" "key" "user_id"
 create_index "$COL_NOTIFICATION_PREFERENCES" "np_unique_user" "unique" "user_id"
 create_index "$COL_NOTIFICATION_PREFERENCES" "np_updated_at" "key" "updated_at"
 
+create_index "$COL_COMPANY_POLICY" "cp_mode" "key" "access_mode"
+create_index "$COL_COMPANY_POLICY" "cp_updated_at" "key" "updated_at"
+
 create_index "$COL_COMPANY_TRANSACTIONS" "ct_workspace_id" "key" "workspace_id"
+create_index "$COL_COMPANY_TRANSACTIONS" "ct_project_id" "key" "project_id"
 create_index "$COL_COMPANY_TRANSACTIONS" "ct_type" "key" "transaction_type"
+create_index "$COL_COMPANY_TRANSACTIONS" "ct_settlement_status" "key" "settlement_status"
 create_index "$COL_COMPANY_TRANSACTIONS" "ct_date" "key" "transaction_date"
 create_index "$COL_COMPANY_TRANSACTIONS" "ct_paid_by" "key" "paid_by"
 create_index "$COL_COMPANY_TRANSACTIONS" "ct_credited_to" "key" "credited_to"

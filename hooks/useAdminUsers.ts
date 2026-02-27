@@ -116,6 +116,34 @@ export function useAdminUsers() {
     return { data, error };
   };
 
+  const removeUser = async (userId: string) => {
+    if (!isAdmin) return { error: new Error('Not authorized') };
+    if (!userId) return { error: new Error('Invalid user id') };
+    if (userId === user?.id) return { error: new Error('You cannot remove your own account') };
+
+    try {
+      const response = await fetch('/api/admin/users/remove', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) {
+        return { error: new Error(payload?.error || 'Failed to remove user') };
+      }
+
+      await fetchUsers();
+      return { error: null };
+    } catch (error) {
+      return {
+        error: new Error(error instanceof Error ? error.message : 'Failed to remove user'),
+      };
+    }
+  };
+
   return {
     users,
     loading,
@@ -123,5 +151,6 @@ export function useAdminUsers() {
     fetchUsers,
     updateUserRole,
     updateUserProfile,
+    removeUser,
   };
 }

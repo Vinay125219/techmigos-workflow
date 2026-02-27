@@ -74,8 +74,9 @@ const authListeners = new Set<AuthChangeCallback>();
 const activeChannels = new Set<{ _unsubscribe?: () => void }>();
 const LIST_PAGE_SIZE = 100;
 let realtimeClient: Client | null = null;
+const OPTIONAL_TABLES = new Set(['governance_actions', 'company_policy']);
 const IMMUTABLE_TABLES = new Set(['activity_logs', 'role_history']);
-const ADMIN_ONLY_TABLES = new Set(['user_roles', 'role_history']);
+const ADMIN_ONLY_TABLES = new Set(['user_roles', 'role_history', 'company_policy']);
 const MANAGER_ONLY_READ_TABLES = new Set(['company_transactions']);
 const MANAGER_ONLY_WRITE_TABLES = new Set([
   'projects',
@@ -272,6 +273,14 @@ const TABLE_FIELDS: Record<string, Set<string>> = {
     'updated_at',
     'created_at',
   ]),
+  company_policy: new Set([
+    'id',
+    'access_mode',
+    'allowed_emails',
+    'updated_by',
+    'created_at',
+    'updated_at',
+  ]),
   documents: new Set([
     'id',
     'title',
@@ -293,11 +302,21 @@ const TABLE_FIELDS: Record<string, Set<string>> = {
   company_transactions: new Set([
     'id',
     'workspace_id',
+    'project_id',
     'transaction_type',
+    'settlement_status',
+    'settled_on',
     'category',
     'title',
     'description',
     'amount',
+    'actual_project_value',
+    'advance_taken',
+    'team_member_count',
+    'team_allocation_amount',
+    'company_buffer_amount',
+    'team_member_share',
+    'team_member_payouts_json',
     'currency',
     'transaction_date',
     'reference',
@@ -595,6 +614,17 @@ function collectionIdForTable(table: string): string | null {
   return (appwriteConfig.collections as Record<string, string | undefined>)[table] || null;
 }
 
+function isMissingCollectionError(error: AppwriteHttpError | null | undefined, collectionId: string): boolean {
+  if (!error) return false;
+  if (error.status !== 404 && error.code !== 404) return false;
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes('collection with the requested id') &&
+    message.includes(`'${collectionId.toLowerCase()}'`)
+  );
+}
+
 function toQueryArrayValue(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [value];
 }
@@ -855,6 +885,9 @@ async function fetchAllDocuments(
     }
 
     if (response.error || !response.data) {
+      if (OPTIONAL_TABLES.has(table) && isMissingCollectionError(response.error, collectionId)) {
+        return { data: [], error: null, count: 0 };
+      }
       return { data: [], error: response.error || new Error('Failed to list documents.') };
     }
 
@@ -1286,6 +1319,12 @@ function createChannel() {
       return channel;
     },
     subscribe(callback?: (status: string) => void) {
+      if (!appwriteConfig.enableRealtime) {
+        startPollingFallback();
+        callback?.('SUBSCRIBED');
+        return channel;
+      }
+
       const client = getRealtimeClient();
       const topics = listeners
         .map((listener) => {

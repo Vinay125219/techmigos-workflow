@@ -33,6 +33,19 @@ Use this runbook in order.
 7. Save Google OAuth settings and wait 2-5 minutes for propagation.
 8. Ensure the Google `Client ID` and `Client Secret` entered in Appwrite Google provider match the same OAuth client.
 
+## 2.5 Enable Messaging Email (Digest)
+
+1. Go to `Messaging -> Providers`.
+2. Add and activate an Email provider (SMTP/SendGrid/Mailgun, etc.).
+3. Keep at least one email provider enabled for your project.
+4. Configure sender/reply-to in that provider (Appwrite uses provider settings for outbound email identity).
+
+Quick connectivity test from this repo:
+
+```bash
+npm run jobs:test-email -- <userId-or-email>
+```
+
 ## 3. Configure Environment
 
 1. Copy `.env.example` to `.env.local` (or use `.env`).
@@ -108,7 +121,9 @@ Recommended production setup:
    - `NEXT_PUBLIC_APPWRITE_PROJECT_ID`
    - `NEXT_PUBLIC_APPWRITE_DATABASE_ID`
    - `APPWRITE_API_KEY`
+   - `APPWRITE_EMAIL_NOTIFICATIONS_ENABLED`
 3. Use an Appwrite API key with database read/write permissions for task, approval, notification, recurring task, workspace, and preference collections.
+4. For digest email delivery, include messaging scope (`messages.write`) in the same API key.
 
 ## 8. Future Flutter Reuse
 

@@ -11,6 +11,7 @@
     "appwrite:setup": "bash ./scripts/setup-appwrite.sh",
     "appwrite:setup:dry-run": "APPWRITE_DRY_RUN=1 bash ./scripts/setup-appwrite.sh",
     "jobs:schedulers": "tsx scripts/run-schedulers.ts",
+    "jobs:test-email": "tsx scripts/test-email.ts",
     "analyze": "cross-env ANALYZE=true next build --webpack",
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:e2e": "playwright test",

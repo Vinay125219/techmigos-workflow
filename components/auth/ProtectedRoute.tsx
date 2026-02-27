@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface ProtectedRouteProps {
@@ -9,9 +9,9 @@ interface ProtectedRouteProps {
     fallback?: ReactNode;
 }
 
-function buildRedirectPath(pathname: string | null, searchParams: URLSearchParams): string {
+function buildRedirectPath(pathname: string | null, rawSearch: string): string {
     const safePath = pathname || "/";
-    const query = searchParams.toString();
+    const query = rawSearch.startsWith("?") ? rawSearch.slice(1) : rawSearch;
     return query ? `${safePath}?${query}` : safePath;
 }
 
@@ -19,13 +19,13 @@ export function ProtectedRoute({ children, fallback = null }: ProtectedRouteProp
     const { isAuthenticated, loading } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const redirectPath = buildRedirectPath(pathname, searchParams);
 
     useEffect(() => {
         if (loading || isAuthenticated) return;
+        const rawSearch = typeof window === "undefined" ? "" : window.location.search;
+        const redirectPath = buildRedirectPath(pathname, rawSearch);
         router.replace(`/auth?redirectTo=${encodeURIComponent(redirectPath)}`);
-    }, [loading, isAuthenticated, redirectPath, router]);
+    }, [loading, isAuthenticated, pathname, router]);
 
     if (loading) return <>{fallback}</>;
     if (!isAuthenticated) return <>{fallback}</>;

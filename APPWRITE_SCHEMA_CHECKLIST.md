@@ -111,13 +111,41 @@ Use this checklist to create Appwrite collections compatible with the current we
 - `entity_id` string optional
 - `created_at` datetime required
 
+### notification_preferences
+- `user_id` string required
+- `in_app_enabled` boolean optional (default `true`)
+- `email_enabled` boolean optional (default `false`)
+- `digest_enabled` boolean optional (default `false`)
+- `muted_until` datetime optional
+- `snoozed_until` datetime optional
+- `type_preferences` string optional (JSON string map)
+- `created_at` datetime required
+- `updated_at` datetime required
+
+### company_policy
+- `access_mode` string required (`open`, `allowlist`)
+- `allowed_emails` string[] optional
+- `updated_by` string optional
+- `created_at` datetime required
+- `updated_at` datetime required
+
 ### company_transactions
 - `workspace_id` string optional
+- `project_id` string optional
 - `transaction_type` string optional (enum in app)
+- `settlement_status` string optional (`settled`, `unsettled`, default `settled`)
+- `settled_on` string optional
 - `category` string required
 - `title` string required
 - `description` string optional
 - `amount` float required
+- `actual_project_value` float optional
+- `advance_taken` float optional
+- `team_member_count` integer optional
+- `team_allocation_amount` float optional
+- `company_buffer_amount` float optional
+- `team_member_share` float optional
+- `team_member_payouts_json` string optional (JSON array of `{ member_name, amount }`)
 - `currency` string required
 - `transaction_date` string required
 - `reference` string optional
@@ -176,11 +204,13 @@ Create these indexes to match current query patterns:
 8. `task_dependencies`: `task_id`, `depends_on_task_id`, `created_at`
 9. `activity_logs`: `user_id`, `entity_type`, `created_at`
 10. `notifications`: `user_id`, `read`, `type`, `entity_id`, `created_at`
-11. `company_transactions`: `workspace_id`, `transaction_type`, `transaction_date`, `paid_by`, `credited_to`, `created_at`
-12. `ideas`: `created_by`, `votes`, `status`, `created_at`
-13. `idea_votes`: `idea_id`, `user_id`, `created_at`
-14. `discussions`: `entity_type`, `entity_id`, `parent_id`, `created_at`
-15. `user_onboarding`: `user_id`
+11. `notification_preferences`: `user_id` (unique), `updated_at`
+12. `company_policy`: `access_mode`, `updated_at`
+13. `company_transactions`: `workspace_id`, `project_id`, `transaction_type`, `settlement_status`, `transaction_date`, `paid_by`, `credited_to`, `created_at`
+14. `ideas`: `created_by`, `votes`, `status`, `created_at`
+15. `idea_votes`: `idea_id`, `user_id`, `created_at`
+16. `discussions`: `entity_type`, `entity_id`, `parent_id`, `created_at`
+17. `user_onboarding`: `user_id`
 
 ## 4. Permissions (Initial Working Mode)
 

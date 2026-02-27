@@ -33,3 +33,4 @@ npm run dev
 1. Current web adapter uses Appwrite auth/storage and database access via REST.
 2. Sync updates in web are polling-based (`NEXT_PUBLIC_APPWRITE_SYNC_POLL_MS`).
 3. Flutter can use the same Appwrite project/database for shared cross-platform data.
+4. Access policy is configurable with `NEXT_PUBLIC_COMPANY_ACCESS_MODE` (`open` or `allowlist`).

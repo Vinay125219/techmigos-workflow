@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/use-toast';
 import { z } from 'zod';
-import { getCompanyAllowedEmails } from '@/lib/company-policy';
+import { getCompanyAccessMode, getCompanyAllowedEmails } from '@/lib/company-policy';
 
 const emailSchema = z.string().email('Invalid email address');
 const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
@@ -53,6 +53,8 @@ export default function AuthPage() {
       })),
     []
   );
+  const companyAccessMode = useMemo(() => getCompanyAccessMode(), []);
+  const isAllowlistMode = companyAccessMode === 'allowlist';
   const companyAllowedEmails = useMemo(() => getCompanyAllowedEmails(), []);
 
   // Login form state
@@ -65,6 +67,17 @@ export default function AuthPage() {
   const [signupPassword, setSignupPassword] = useState('');
 
   const displayError = error || queryError;
+
+  useEffect(() => {
+    try {
+      const pendingAuthError = window.sessionStorage.getItem('tm_auth_error');
+      if (!pendingAuthError) return;
+      setError(pendingAuthError);
+      window.sessionStorage.removeItem('tm_auth_error');
+    } catch {
+      // Ignore storage errors.
+    }
+  }, []);
 
   useEffect(() => {
     if (oauthStatus === 'success' && isAuthenticated) {
@@ -345,8 +358,10 @@ export default function AuthPage() {
               <TabsContent value="signup">
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning-foreground">
-                    Company policy: only approved company members can register.
-                    {companyAllowedEmails.length > 0 && (
+                    {isAllowlistMode
+                      ? 'Company policy: invite-only mode. Users must be approved by an admin before Sign Up or Google login.'
+                      : 'Company policy: open mode. Everyone can sign in with Google, and admins can assign roles after login.'}
+                    {isAllowlistMode && companyAllowedEmails.length > 0 && (
                       <div className="mt-1 text-muted-foreground">
                         Approved emails: {companyAllowedEmails.join(', ')}
                       </div>

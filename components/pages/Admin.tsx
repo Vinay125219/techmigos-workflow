@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Shield,
@@ -17,7 +17,10 @@ import {
   Filter,
   Search,
   RefreshCw,
-  Trash2
+  Trash2,
+  LockKeyhole,
+  UserPlus,
+  X
 } from 'lucide-react';
 import { Layout } from '@/components/layout/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,7 +33,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAdminUsers } from '@/hooks/useAdminUsers';
 import { useTasks } from '@/hooks/useTasks';
@@ -39,15 +41,35 @@ import { useActivityLogs } from '@/hooks/useActivityLogs';
 import { useGovernanceActions } from '@/hooks/useGovernanceActions';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-import { formatDistanceToNow, format, subDays, subWeeks, subMonths } from 'date-fns';
+import { backend } from '@/integrations/backend/client';
+import {
+  COMPANY_PRIVILEGED_EMAILS,
+  getCompanyPolicyFromEnv,
+  getCompanyPolicyFromSource,
+  isMissingCollectionError,
+  isValidEmailAddress,
+  normalizeEmail,
+  type CompanyAccessMode,
+} from '@/lib/company-policy';
+import { formatDistanceToNow, format, subWeeks, subMonths } from 'date-fns';
 import { exportToCSV } from '@/utils/exportUtils';
+
+type CompanyPolicyRecord = {
+  id: string;
+  access_mode?: string;
+  allowed_emails?: string[] | string;
+};
+
+function toCustomAllowedEmails(emails: string[]): string[] {
+  return emails.filter((email) => !COMPANY_PRIVILEGED_EMAILS.includes(email));
+}
 
 const Admin = () => {
   const router = useRouter();
   const { isAdmin, user, loading: authLoading } = useAuth();
-  const { users, loading: usersLoading, updateUserRole } = useAdminUsers();
+  const { users, loading: usersLoading, updateUserRole, removeUser } = useAdminUsers();
   const { tasks } = useTasks();
-  const { projects, deleteProject } = useProjects();
+  const { projects } = useProjects();
   const { logs } = useActivityLogs(1000);
   const { actions, approveAction, rejectAction } = useGovernanceActions();
 
@@ -60,10 +82,76 @@ const Admin = () => {
   const [announcements, setAnnouncements] = useState<Array<{ id: string, title: string, message: string, date: Date }>>([]);
   const [newTitle, setNewTitle] = useState('');
   const [newMessage, setNewMessage] = useState('');
+  const [postingAnnouncement, setPostingAnnouncement] = useState(false);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+
+  const envPolicy = useMemo(() => getCompanyPolicyFromEnv(), []);
+  const [accessMode, setAccessMode] = useState<CompanyAccessMode>(envPolicy.mode);
+  const [allowedEmails, setAllowedEmails] = useState<string[]>(toCustomAllowedEmails(envPolicy.allowedEmails));
+  const [policyRecordId, setPolicyRecordId] = useState<string | null>(null);
+  const [policyLoading, setPolicyLoading] = useState(true);
+  const [policySaving, setPolicySaving] = useState(false);
+  const [policyFallback, setPolicyFallback] = useState(false);
+  const [newAllowedEmail, setNewAllowedEmail] = useState('');
+
+  const loadCompanyPolicy = useCallback(async () => {
+    if (!isAdmin) {
+      setPolicyLoading(false);
+      return;
+    }
+
+    try {
+      setPolicyLoading(true);
+      const { data, error } = await backend
+        .from('company_policy')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        if (isMissingCollectionError(error)) {
+          setPolicyFallback(true);
+          setPolicyRecordId(null);
+          setAccessMode(envPolicy.mode);
+          setAllowedEmails(toCustomAllowedEmails(envPolicy.allowedEmails));
+          return;
+        }
+
+        throw error;
+      }
+
+      if (!data) {
+        setPolicyFallback(false);
+        setPolicyRecordId(null);
+        setAccessMode(envPolicy.mode);
+        setAllowedEmails(toCustomAllowedEmails(envPolicy.allowedEmails));
+        return;
+      }
+
+      const record = data as CompanyPolicyRecord;
+      const policy = getCompanyPolicyFromSource(record);
+      setPolicyFallback(false);
+      setPolicyRecordId(record.id || null);
+      setAccessMode(policy.mode);
+      setAllowedEmails(toCustomAllowedEmails(policy.allowedEmails));
+    } catch (error) {
+      console.error('Failed to load company policy:', error);
+      setPolicyFallback(true);
+      setPolicyRecordId(null);
+      setAccessMode(envPolicy.mode);
+      setAllowedEmails(toCustomAllowedEmails(envPolicy.allowedEmails));
+    } finally {
+      setPolicyLoading(false);
+    }
+  }, [envPolicy, isAdmin]);
 
   useEffect(() => {
     if (!authLoading && !isAdmin) router.push('/');
   }, [isAdmin, authLoading, router]);
+
+  useEffect(() => {
+    loadCompanyPolicy();
+  }, [loadCompanyPolicy]);
 
   // System stats
   const stats = useMemo(() => ({
@@ -127,20 +215,155 @@ const Admin = () => {
     toast({ title: 'Exported', description: `Audit log exported (${data.length} entries)` });
   };
 
-  const handleAddAnnouncement = () => {
+  const handleAddAnnouncement = async () => {
     if (!newTitle.trim() || !newMessage.trim()) {
       toast({ title: 'Error', description: 'Please fill in all fields', variant: 'destructive' });
       return;
     }
-    setAnnouncements(prev => [{
-      id: Date.now().toString(),
-      title: newTitle,
-      message: newMessage,
-      date: new Date()
-    }, ...prev]);
-    setNewTitle('');
-    setNewMessage('');
-    toast({ title: 'Posted', description: 'Announcement created successfully' });
+
+    if (!user) {
+      toast({ title: 'Error', description: 'Not authenticated', variant: 'destructive' });
+      return;
+    }
+
+    const title = newTitle.trim();
+    const message = newMessage.trim();
+
+    try {
+      setPostingAnnouncement(true);
+      const recipients = users.filter((member) => member.id !== user.id);
+
+      if (recipients.length > 0) {
+        const payload = recipients.map((member) => ({
+          user_id: member.id,
+          type: 'announcement',
+          title,
+          message,
+          entity_type: null,
+          entity_id: null,
+        }));
+
+        const { error } = await backend.from('notifications').insert(payload);
+        if (error) throw error;
+      }
+
+      setAnnouncements(prev => [{
+        id: Date.now().toString(),
+        title,
+        message,
+        date: new Date()
+      }, ...prev]);
+      setNewTitle('');
+      setNewMessage('');
+      toast({ title: 'Posted', description: `Announcement sent to ${recipients.length} user(s).` });
+    } catch (error) {
+      console.error('Failed to post announcement:', error);
+      toast({
+        title: 'Post failed',
+        description: error instanceof Error ? error.message : 'Unable to send announcement notifications.',
+        variant: 'destructive',
+      });
+    } finally {
+      setPostingAnnouncement(false);
+    }
+  };
+
+  const handleAddAllowedEmail = () => {
+    const normalized = normalizeEmail(newAllowedEmail);
+    if (!normalized) return;
+
+    if (!isValidEmailAddress(normalized)) {
+      toast({ title: 'Invalid email', description: 'Please enter a valid email address.', variant: 'destructive' });
+      return;
+    }
+
+    if (COMPANY_PRIVILEGED_EMAILS.includes(normalized)) {
+      toast({ title: 'Already privileged', description: `${normalized} is always allowed.` });
+      return;
+    }
+
+    if (allowedEmails.includes(normalized)) {
+      toast({ title: 'Already added', description: `${normalized} is already in the allowlist.` });
+      return;
+    }
+
+    setAllowedEmails((prev) => [...prev, normalized]);
+    setNewAllowedEmail('');
+  };
+
+  const handleRemoveAllowedEmail = (email: string) => {
+    setAllowedEmails((prev) => prev.filter((entry) => entry !== email));
+  };
+
+  const handleSaveCompanyPolicy = async () => {
+    if (!user) return;
+
+    try {
+      setPolicySaving(true);
+
+      const payload = {
+        access_mode: accessMode,
+        allowed_emails: allowedEmails,
+        updated_by: user.id,
+      };
+
+      const operation = policyRecordId
+        ? backend.from('company_policy').update(payload).eq('id', policyRecordId)
+        : backend.from('company_policy').insert({ id: 'global', ...payload });
+
+      const { data, error } = await operation.select().single();
+      if (error) throw error;
+
+      const record = data as CompanyPolicyRecord;
+      const updatedPolicy = getCompanyPolicyFromSource(record);
+      setPolicyRecordId(record.id || policyRecordId || 'global');
+      setAccessMode(updatedPolicy.mode);
+      setAllowedEmails(toCustomAllowedEmails(updatedPolicy.allowedEmails));
+      setPolicyFallback(false);
+      toast({ title: 'Saved', description: 'Company access policy updated.' });
+    } catch (error) {
+      if (isMissingCollectionError(error)) {
+        toast({
+          title: 'Policy collection missing',
+          description: 'Run appwrite setup to create company_policy collection, then retry.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Save failed',
+          description: error instanceof Error ? error.message : 'Could not save company policy.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setPolicySaving(false);
+    }
+  };
+
+  const handleRemoveUser = async (userId: string, userEmail: string) => {
+    if (!userId || userId === user?.id) return;
+
+    const confirmed = window.confirm(
+      `Remove user ${userEmail}?\n\nThis will delete their account access and remove their profile/roles.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setRemovingUserId(userId);
+      const { error } = await removeUser(userId);
+      if (error) throw error;
+
+      toast({ title: 'User removed', description: `${userEmail} has been removed.` });
+      loadCompanyPolicy();
+    } catch (error) {
+      toast({
+        title: 'Remove failed',
+        description: error instanceof Error ? error.message : 'Could not remove this user.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRemovingUserId(null);
+    }
   };
 
   const getRoleColor = (role: string) => {
@@ -170,6 +393,7 @@ const Admin = () => {
           <TabsList className="flex flex-wrap gap-1 h-auto p-1 bg-muted/50">
             <TabsTrigger value="stats" className="gap-2"><BarChart3 className="w-4 h-4" /> Stats</TabsTrigger>
             <TabsTrigger value="users" className="gap-2"><Users className="w-4 h-4" /> Users</TabsTrigger>
+            <TabsTrigger value="access" className="gap-2"><LockKeyhole className="w-4 h-4" /> Access</TabsTrigger>
             <TabsTrigger value="audit" className="gap-2"><FileText className="w-4 h-4" /> Audit Log</TabsTrigger>
             <TabsTrigger value="announcements" className="gap-2"><Bell className="w-4 h-4" /> Announcements</TabsTrigger>
             <TabsTrigger value="oversight" className="gap-2"><ClipboardCheck className="w-4 h-4" /> Oversight</TabsTrigger>
@@ -265,6 +489,18 @@ const Admin = () => {
                                 <UserMinus className="w-4 h-4 mr-1" /> Remove Manager
                               </Button>
                             )}
+                            {!isSelf && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive"
+                                onClick={() => handleRemoveUser(userItem.id, userItem.email)}
+                                disabled={removingUserId === userItem.id}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                {removingUserId === userItem.id ? 'Removing...' : 'Remove User'}
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -273,6 +509,127 @@ const Admin = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Access Tab */}
+          <TabsContent value="access">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <LockKeyhole className="w-5 h-5" />
+                    Company Access Policy
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {policyFallback && (
+                    <p className="text-sm text-warning">
+                      Using environment fallback policy. Create `company_policy` collection to enable persistent admin updates.
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label>Access Mode</Label>
+                    <Select
+                      value={accessMode}
+                      onValueChange={(value) => setAccessMode(value as CompanyAccessMode)}
+                      disabled={policyLoading || policySaving}
+                    >
+                      <SelectTrigger className="w-full max-w-xs">
+                        <SelectValue placeholder="Select mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="open">Open (all emails)</SelectItem>
+                        <SelectItem value="allowlist">Allowlist only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Always Allowed (Privileged)</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {COMPANY_PRIVILEGED_EMAILS.map((email) => (
+                        <Badge key={email} variant="secondary">{email}</Badge>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Allowlist Emails</Label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Input
+                        value={newAllowedEmail}
+                        onChange={(e) => setNewAllowedEmail(e.target.value)}
+                        placeholder="Enter email and click Add"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddAllowedEmail();
+                          }
+                        }}
+                        disabled={policyLoading || policySaving}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleAddAllowedEmail}
+                        disabled={policyLoading || policySaving}
+                      >
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Add
+                      </Button>
+                    </div>
+                    {allowedEmails.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No custom allowlist emails added.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {allowedEmails.map((email) => (
+                          <div key={email} className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm">
+                            <span>{email}</span>
+                            <button
+                              type="button"
+                              className="rounded-full p-0.5 hover:bg-muted"
+                              onClick={() => handleRemoveAllowedEmail(email)}
+                              disabled={policyLoading || policySaving}
+                              aria-label={`Remove ${email}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={handleSaveCompanyPolicy}
+                      disabled={policyLoading || policySaving}
+                    >
+                      {policySaving ? 'Saving...' : 'Save Access Policy'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={loadCompanyPolicy}
+                      disabled={policyLoading || policySaving}
+                    >
+                      Refresh
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Policy Notes</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-muted-foreground">
+                  <p>When mode is `open`, all users can sign in.</p>
+                  <p>When mode is `allowlist`, only privileged and allowlisted emails can access.</p>
+                  <p>Users already signed in may need to sign out and sign in again after policy changes.</p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Audit Log Tab */}
@@ -358,13 +715,26 @@ const Admin = () => {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label>Title</Label>
-                    <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Announcement title" />
+                    <Input
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      placeholder="Announcement title"
+                      disabled={postingAnnouncement}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Message</Label>
-                    <Textarea value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Write your announcement..." rows={4} />
+                    <Textarea
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="Write your announcement..."
+                      rows={4}
+                      disabled={postingAnnouncement}
+                    />
                   </div>
-                  <Button onClick={handleAddAnnouncement} className="w-full">Post Announcement</Button>
+                  <Button onClick={handleAddAnnouncement} className="w-full" disabled={postingAnnouncement}>
+                    {postingAnnouncement ? 'Posting...' : 'Post Announcement'}
+                  </Button>
                 </CardContent>
               </Card>
               <Card>

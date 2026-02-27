@@ -1,3 +1,4 @@
+import './load-env';
 import { backend } from '../integrations/backend/client';
 import { runDueRecurringTasksForWorkspace } from '../lib/recurring-tasks';
 import { runApprovalEscalations } from '../lib/approvals';
@@ -92,12 +93,21 @@ async function runSchedulers(): Promise<void> {
   }
 
   const digestUsers = await fetchDigestEnabledUsers();
+  let digestProcessed = 0;
+  let digestFailed = 0;
+
   for (const userId of digestUsers) {
-    await generateNotificationDigest(userId);
+    try {
+      await generateNotificationDigest(userId);
+      digestProcessed += 1;
+    } catch (error) {
+      digestFailed += 1;
+      console.error(`[scheduler] Digest generation failed for user ${userId}:`, error);
+    }
   }
 
   console.info(
-    `[scheduler] Completed. workspaces=${workspaces.length} recurring_created=${recurringCreated} recurring_skipped=${recurringSkipped} recurring_failed=${recurringFailed} digest_users=${digestUsers.length}`
+    `[scheduler] Completed. workspaces=${workspaces.length} recurring_created=${recurringCreated} recurring_skipped=${recurringSkipped} recurring_failed=${recurringFailed} digest_users=${digestUsers.length} digest_processed=${digestProcessed} digest_failed=${digestFailed}`
   );
 }
 

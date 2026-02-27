@@ -9,6 +9,8 @@ interface UseCompanyTransactionsOptions {
   pageSize?: number;
   search?: string;
   transactionType?: CompanyTransaction['transaction_type'] | 'all';
+  settlementStatus?: CompanyTransaction['settlement_status'] | 'all';
+  projectId?: string | 'all';
 }
 
 export function useCompanyTransactions(options: UseCompanyTransactionsOptions = {}) {
@@ -60,8 +62,18 @@ export function useCompanyTransactions(options: UseCompanyTransactionsOptions = 
         query = query.eq('workspace_id', options.workspaceId);
       }
 
+      if (options.projectId && options.projectId !== 'all') {
+        query = options.projectId === 'none'
+          ? query.eq('project_id', null)
+          : query.eq('project_id', options.projectId);
+      }
+
       if (options.transactionType && options.transactionType !== 'all') {
         query = query.eq('transaction_type', options.transactionType);
+      }
+
+      if (options.settlementStatus && options.settlementStatus !== 'all') {
+        query = query.eq('settlement_status', options.settlementStatus);
       }
 
       if (options.search && options.search.trim()) {
@@ -94,7 +106,16 @@ export function useCompanyTransactions(options: UseCompanyTransactionsOptions = 
     } finally {
       setLoading(false);
     }
-  }, [isManager, options.workspaceId, options.transactionType, options.search, offset, pageSize]);
+  }, [
+    isManager,
+    options.workspaceId,
+    options.projectId,
+    options.transactionType,
+    options.settlementStatus,
+    options.search,
+    offset,
+    pageSize,
+  ]);
 
   useEffect(() => {
     fetchTransactions();
@@ -190,6 +211,20 @@ export function useCompanyTransactions(options: UseCompanyTransactionsOptions = 
 
       if (options.workspaceId) {
         query = query.eq('workspace_id', options.workspaceId);
+      }
+
+      if (options.projectId && options.projectId !== 'all') {
+        query = options.projectId === 'none'
+          ? query.eq('project_id', null)
+          : query.eq('project_id', options.projectId);
+      }
+
+      if (options.transactionType && options.transactionType !== 'all') {
+        query = query.eq('transaction_type', options.transactionType);
+      }
+
+      if (options.settlementStatus && options.settlementStatus !== 'all') {
+        query = query.eq('settlement_status', options.settlementStatus);
       }
 
       const { data, error } = await query;

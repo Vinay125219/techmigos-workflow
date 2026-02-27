@@ -20,6 +20,16 @@ function normalizeCollectionId(table: string, value: string): string {
   return trimmed;
 }
 
+function normalizeBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
+  if (!value) return defaultValue;
+
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+
+  return defaultValue;
+}
+
 export const appwriteConfig = {
   endpoint: normalizedEndpoint,
   endpointWithVersion: normalizedEndpoint.endsWith('/v1')
@@ -50,6 +60,8 @@ export const appwriteConfig = {
     notifications: normalizeCollectionId('notifications', process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_NOTIFICATIONS?.trim() || 'notifications'),
     notification_preferences:
       normalizeCollectionId('notification_preferences', process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_NOTIFICATION_PREFERENCES?.trim() || 'notification_preferences'),
+    company_policy:
+      normalizeCollectionId('company_policy', process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_COMPANY_POLICY?.trim() || 'company_policy'),
     documents: normalizeCollectionId('documents', process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_DOCUMENTS?.trim() || 'documents'),
     company_transactions:
       normalizeCollectionId('company_transactions', process.env.NEXT_PUBLIC_APPWRITE_COLLECTION_COMPANY_TRANSACTIONS?.trim() || 'company_transactions'),
@@ -67,6 +79,10 @@ export const appwriteConfig = {
     task_attachments:
       process.env.NEXT_PUBLIC_APPWRITE_BUCKET_TASK_ATTACHMENTS?.trim() || 'task-attachments',
   },
+  enableRealtime: normalizeBooleanEnv(
+    process.env.NEXT_PUBLIC_APPWRITE_ENABLE_REALTIME,
+    process.env.NODE_ENV === 'production'
+  ),
   syncPollMs: Number(process.env.NEXT_PUBLIC_APPWRITE_SYNC_POLL_MS || 7000),
 };
 

@@ -25,6 +25,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     if (!user) {
       setNotifications([]);
       setUnreadCount(0);
+      setTotalCount(0);
+      setLoading(false);
       return;
     }
 
@@ -49,18 +51,18 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         query,
         backend
           .from('notifications')
-          .select('*')
+          .select('id')
           .eq('user_id', user.id)
-          .eq('read', false)
-          .limit(1),
+          .eq('read', false),
       ]);
 
       if (error) throw error;
 
       const notifs = (data || []) as Notification[];
+      const unreadRows = (unreadResult.data || []) as Array<{ id: string }>;
       setTotalCount(count || notifs.length);
       setNotifications(notifs);
-      setUnreadCount(unreadResult.count || notifs.filter(n => !n.read).length);
+      setUnreadCount(unreadRows.length);
     } catch (err) {
       console.error('Error fetching notifications:', err);
     } finally {

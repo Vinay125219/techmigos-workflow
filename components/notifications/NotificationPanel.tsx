@@ -20,6 +20,7 @@ export function NotificationPanel() {
   const [open, setOpen] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, loading } = useNotifications();
   const { preferences, isMuted, isSnoozed, mute, snooze, updatePreferences } = useNotificationPreferences();
+  const emailEnabled = Boolean(preferences?.email_enabled);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -169,10 +170,24 @@ export function NotificationPanel() {
         </div>
         <div className="px-4 py-3 border-b bg-muted/20 space-y-2">
           <div className="flex items-center justify-between text-xs">
+            <span>Email notifications</span>
+            <Switch
+              checked={emailEnabled}
+              onCheckedChange={(checked) => updatePreferences({
+                email_enabled: checked,
+                digest_enabled: checked ? Boolean(preferences?.digest_enabled) : false,
+              })}
+            />
+          </div>
+          <div className="flex items-center justify-between text-xs">
             <span>Digest email</span>
             <Switch
-              checked={Boolean(preferences?.digest_enabled)}
-              onCheckedChange={(checked) => updatePreferences({ digest_enabled: checked })}
+              checked={emailEnabled && Boolean(preferences?.digest_enabled)}
+              disabled={!emailEnabled}
+              onCheckedChange={(checked) => updatePreferences({
+                email_enabled: checked ? true : emailEnabled,
+                digest_enabled: checked,
+              })}
             />
           </div>
           <div className="flex gap-2">
